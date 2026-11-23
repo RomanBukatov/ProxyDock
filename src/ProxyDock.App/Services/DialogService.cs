@@ -1,0 +1,166 @@
+using Avalonia.Controls;
+using Avalonia.Platform.Storage;
+using ProxyDock.App.ViewModels;
+using ProxyDock.App.Views;
+using ProxyDock.Core.Interfaces;
+using ProxyDock.Core.Models;
+
+namespace ProxyDock.App.Services;
+
+public sealed class DialogService : IDialogService
+{
+    private readonly ILocalizationService _loc;
+    private readonly IProxyProfileService _proxyService;
+    private readonly IExecutableDiscoveryService _discovery;
+    private Window? _owner;
+
+    public DialogService(
+        ILocalizationService loc,
+        IProxyProfileService proxyService,
+        IExecutableDiscoveryService discovery)
+    {
+        _loc = loc;
+        _proxyService = proxyService;
+        _discovery = discovery;
+    }
+
+    public void AttachOwner(Window owner) => _owner = owner;
+
+    public async Task<ApplicationProfile?> ShowApplicationEditorAsync(ApplicationProfile? initialProfile)
+    {
+        if (_owner is null)
+        {
+            return null;
+        }
+
+        var proxies = await _proxyService.GetAllAsync();
+        var vm = new ApplicationEditorViewModel(_loc, _discovery, this, proxies, initialProfile);
+        var window = new ApplicationEditorWindow { DataContext = vm };
+        vm.CloseRequested = ok => window.Close(ok);
+
+        var accepted = await window.ShowDialog<bool>(_owner);
+        return accepted ? vm.SavedProfile : null;
+    }
+
+    public async Task<ProxyProfile?> ShowProxyEditorAsync(ProxyProfile? initialProfile)
+    {
+        if (_owner is null)
+        {
+            return null;
+        }
+
+        var vm = new ProxyEditorViewModel(_loc, initialProfile);
+        var window = new ProxyEditorWindow { DataContext = vm };
+        vm.CloseRequested = ok => window.Close(ok);
+
+        var accepted = await window.ShowDialog<bool>(_owner);
+        if (!accepted || vm.SavedProfile is null)
+        {
+            return null;
+        }
+
+        return await _proxyService.SaveAsync(vm.SavedProfile, vm.EnteredNewPassword, vm.ShouldClearPassword);
+    }
+
+    public async Task<bool> ShowConfirmationAsync(
+        string title,
+        string message,
+        string confirmText = "Продолжить",
+        string? cancelText = "Отмена",
+        bool isDanger = false)
+    {
+        if (_owner is null)
+        {
+            return false;
+        }
+
+        var vm = new ConfirmationDialogViewModel(title, message, confirmText, cancelText, isDanger);
+        var dialog = new ConfirmationDialog { DataContext = vm };
+        vm.CloseAction = ok => dialog.Close(ok);
+
+        return await dialog.ShowDialog<bool>(_owner);
+    }
+
+    public async Task<string?> PickExecutableFileAsync()
+    {
+        var storage = _owner is null ? null : TopLevel.GetTopLevel(_owner)?.StorageProvider;
+        if (storage is null)
+        {
+            return null;
+        }
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Выберите исполняемый файл или скрипт",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Исполняемые файлы Windows") { Patterns = ["*.exe", "*.cmd", "*.bat", "*.ps1"] },
+                FilePickerFileTypes.All
+            ]
+        });
+
+        return files.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickFolderAsync(string title, string? initialPath = null)
+    {
+        var storage = _owner is null ? null : TopLevel.GetTopLevel(_owner)?.StorageProvider;
+        if (storage is null)
+        {
+            return null;
+        }
+
+        IStorageFolder? startFolder = null;
+        if (!string.IsNullOrWhiteSpace(initialPath) && Directory.Exists(initialPath))
+        {
+            startFolder = await storage.TryGetFolderFromPathAsync(initialPath);
+        }
+
+        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            SuggestedStartLocation = startFolder
+        });
+
+        return folders.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickExportFileAsync(string defaultFileName)
+    {
+        var storage = _owner is null ? null : TopLevel.GetTopLevel(_owner)?.StorageProvider;
+        if (storage is null)
+        {
+            return null;
+        }
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Экспорт конфигурации ProxyDock (без паролей)",
+            SuggestedFileName = defaultFileName,
+            DefaultExtension = "json",
+            FileTypeChoices = [new FilePickerFileType("JSON Configuration") { Patterns = ["*.json"] }]
+        });
+
+        return file?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickImportFileAsync()
+    {
+        var storage = _owner is null ? null : TopLevel.GetTopLevel(_owner)?.StorageProvider;
+        if (storage is null)
+        {
+            return null;
+        }
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Импорт конфигурации ProxyDock",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("JSON Configuration") { Patterns = ["*.json"] }]
+        });
+
+        return files.FirstOrDefault()?.TryGetLocalPath();
+    }
+}

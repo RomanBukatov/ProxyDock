@@ -1,0 +1,159 @@
+# ProxyDock — Windows Desktop HTTP Proxy Launcher
+
+**ProxyDock** — это desktop-приложение для Windows 11 на базе **.NET 10** и **Avalonia UI 12**, предназначенное для запуска отдельных программ через индивидуальные HTTP-прокси **без изменения системного прокси Windows**, реестра, WinHTTP, маршрутизации или глобальных переменных окружения.
+
+Основной сценарий первой версии — **удобный запуск Windows GUI-приложений** (включая предустановленные профили для **Google Antigravity Desktop**, **Claude Desktop** и **Codex Desktop**, а также произвольных `.exe`). Поддержка CLI-программ в интерактивном терминале (`Windows Terminal` / `PowerShell`) сохранена как дополнительная универсальная возможность.
+
+---
+
+## Ключевые особенности
+
+- **Нулевое вмешательство в систему:** переменные окружения (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`, `NO_PROXY`, `no_proxy`) задаются строго через `ProcessStartInfo.Environment` только для запускаемого дочернего процесса.
+- **Одновременная работа с разными прокси:** можно запустить несколько приложений одновременно с разными HTTP-прокси или в режиме **«Без прокси»**.
+- **Desktop-first профили и анализ стека:**
+  - **Google Antigravity Desktop** — автообнаружение Win32 Electron/Chromium, передача переменных окружения и флага `--proxy-server`.
+  - **Claude Desktop** — автообнаружение MSIX App Execution Alias (`claude-desktop.exe`), анализ стека (`Electron` + `cowork-svc.exe`), честное предупреждение о проверке применимости и поиск уже работающих процессов `Claude.exe`.
+  - **Codex Desktop** — автообнаружение MSIX App Execution Alias (`OpenAI.Codex_*\chatgpt-desktop.exe`), анализ стека (`Chromium/Owl` + `codex.exe` + `codex-windows-sandbox-service.exe`), честные рекомендации и поиск уже работающих процессов `ChatGPT.exe` / `Codex.exe`.
+  - Автоматический инспектор стека для любого добавленного `.exe` (различает Win32 Electron/Chromium, MSIX App Execution Alias, WebView2 и нативные `.exe` без слепого добавления `--proxy-server`).
+- **Проверка уже запущенных программ:** если приложение (включая свёрнутое в трей `Claude.exe` или `Antigravity.exe`) уже работает, ProxyDock предупреждает об этом и **не завершает чужой процесс принудительно**, так как повторный запуск может передать управление существующему окну без нового окружения.
+- **Управление прокси и безопасность (DPAPI):**
+  - Поддержка нескольких HTTP-прокси, дублирования и профиля по умолчанию.
+  - Пароли никогда не сохраняются открытым текстом в JSON, не отображаются в интерфейсе, не включаются в экспорт конфигурации и не попадают в логи (`SecretRedactor`).
+  - Для хранения паролей используется **Windows DPAPI** (`ProtectedData` с областью `CurrentUser`).
+- **Асинхронная диагностика прокси:** раздельная проверка TCP-подключения и реального HTTPS/HTTP-запроса через явно настроенный `SocketsHttpHandler`, определение кода `407 Proxy Authentication Required`, измерение задержки, определение внешнего IP и возможность отмены проверки.
+- **Системный трей и независимость:** сворачивание в трей, быстрый запуск приложений из меню трея, полное закрытие ProxyDock без завершения уже запущенных программ, автозапуск через `HKCU\...\Run` (без прав администратора).
+- **Надёжное хранение данных:** атомарная запись JSON в `%LOCALAPPDATA%\ProxyDock\config\`, резервные копии, карантин повреждённых файлов, версионирование схемы, экспорт/импорт без секретов.
+- **Локализация:** основной интерфейс на русском языке с возможностью мгновенного переключения на английский (`ru` / `en`) и поддержкой тем `Dark` / `Light` / `System`.
+
+---
+
+## Требования
+
+- **Для запуска готовой Release-сборки:** Windows 11 x64 (Visual Studio и отдельно установленный .NET Runtime не требуются — сборка self-contained, права администратора не требуются).
+- **Для сборки из исходного кода:**
+  - Windows 11 x64
+  - [.NET 10 SDK](https://dotnet.microsoft.com/) (`10.0.x`)
+
+---
+
+## Архитектура проекта
+
+```text
+ProxyDock/
+├── src/
+│   ├── ProxyDock.Core/             # Доменные модели, перечисления, контракты, валидация,
+│   │                               # чистые сервисы (ProxyUriBuilder, ProxyEnvironmentBuilder,
+│   │                               # CommandLineTokenizer, PowerShellScriptBuilder, SecretRedactor, шаблоны)
+│   ├── ProxyDock.Infrastructure/   # Атомарное JSON-хранилище, DPAPI-хранилище паролей,
+│   │                               # проверка прокси, автообнаружение Windows/MSIX, инспектор стека,
+│   │                               # отслеживание процессов, Desktop и CLI лаунчеры, логгер
+│   └── ProxyDock.App/              # Avalonia UI 12.1.6, MVVM (CommunityToolkit.Mvvm), DI,
+│                                   # Views/ViewModels, Styles, Localization, TrayIcon, DialogService
+├── tests/
+│   ├── ProxyDock.TestChild/        # Тестовое дочернее приложение для интеграционной проверки окружения
+│   └── ProxyDock.Tests/            # Модульные и интеграционные тесты xUnit
+├── Directory.Build.props
+├── ProxyDock.slnx
+└── README.md
+```
+
+Данные пользователя хранятся в `%LOCALAPPDATA%\ProxyDock\`:
+
+- `config/` — `applications.json`, `proxies.json`, `settings.json`, `history.json`
+- `secrets/` — зашифрованные через Windows DPAPI учётные данные прокси (`*.bin`)
+- `logs/` — ежедневные журналы работы с фильтрацией секретов
+- `backups/` — резервные копии и карантин повреждённых JSON-файлов
+- `runtime/` — временные самоудаляющиеся `.ps1`-обёртки для CLI-запуска
+
+---
+
+## Быстрый старт и использование
+
+### 1. Добавление HTTP-прокси
+1. Откройте вкладку **«Прокси-профили»** и нажмите **«+ Новый прокси»**.
+2. Укажите название (например, `Proxy A`), `Host` (например, `127.0.0.1` или `proxy.example.com`) и `Port`.
+3. При необходимости укажите логин и пароль (пароль сохраняется только в Windows DPAPI).
+4. Нажмите **«Проверить»**, чтобы выполнить независимую от настроек Windows проверку:
+   - сначала проверяется TCP-доступность порта;
+   - затем выполняется запрос к диагностическому HTTPS URL через этот прокси.
+
+### 2. Запуск Desktop-приложений (основной сценарий)
+
+#### Google Antigravity Desktop
+- Используйте карточку **Google Antigravity Desktop** на экране **«Обзор»** или пункт меню **«Готовые профили» → «Desktop: Google Antigravity»**.
+- Приложение автоматически определяется в `%LOCALAPPDATA%\Programs\antigravity\Antigravity.exe` (при нестандартной установке путь можно указать вручную).
+- Включены переменные окружения прокси и параметр `--proxy-server=http://host:port` (без передачи логина/пароля в командной строке).
+
+#### Claude Desktop
+- Используйте профиль **Claude Desktop** (автообнаружение ищет MSIX App Execution Alias `%LOCALAPPDATA%\Microsoft\WindowsApps\Claude_*\claude-desktop.exe` или классическую установку в `LocalAppData`).
+- По умолчанию передаются только переменные окружения (`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` и lowercase-варианты). При желании можно включить экспериментальный режим `--proxy-server` в настройках профиля.
+- **Важно:** Claude Desktop может оставаться в системном трее (`Claude.exe`) и содержит фоновый компонент `cowork-svc.exe`. Перед запуском через другой прокси полностью закройте Claude Desktop, в том числе из трея.
+
+#### Codex Desktop
+- Используйте профиль **Codex Desktop** (автообнаружение ищет MSIX App Execution Alias `%LOCALAPPDATA%\Microsoft\WindowsApps\OpenAI.Codex_*\chatgpt-desktop.exe` или локальную установку).
+- Пакет включает оболочку Chromium/Owl (`ChatGPT.exe` / `Codex.exe`), внутренний `codex.exe` и службу Windows `codex-windows-sandbox-service.exe`.
+- По умолчанию передаются переменные окружения процесса; при проблемах в MSIX-контейнере дополнительно проверьте работу с флагом `--proxy-server` или настройкой `%USERPROFILE%\.codex\.env`.
+
+#### Произвольное desktop-приложение
+- Нажмите **«+ Приложение»**, выберите `.exe`, при необходимости задайте рабочую директорию, аргументы и дополнительные переменные окружения.
+- Нажмите **«Проверить стек»**, чтобы увидеть результат анализа (Win32 Electron/Chromium, MSIX, WebView2 или нативное приложение) и рекомендации.
+
+### 3. Запуск без прокси и CLI-режим
+- У каждой карточки есть кнопка **«Без прокси»** (в т.ч. в обзоре и меню `⋯` на вкладке «Приложения»): она удаляет прокси-переменные только для этого запуска.
+- Для терминальных утилит (`claude`, `codex` и других CLI) выберите тип **CLI (терминал)** — они открываются в отдельном интерактивном окне `Windows Terminal` (или `PowerShell` в качестве fallback) без перенаправления ввода/вывода.
+
+---
+
+## Ограничения лаунчера и проверка применимости
+
+ProxyDock — это **процессный launcher (уровня `ProcessStartInfo`)**, а не перехватчик трафика уровня ОС (как Proxifier, TUN/VPN или WFP-драйвер):
+
+1. **Успешный старт процесса ≠ гарантия проксирования.** Если стороннее приложение жёстко использует WinINet/WinHTTP или собственный сокет-стек, игнорирующий `HTTP_PROXY`/`HTTPS_PROXY`, или запускается внутри изолированного системного сервиса Windows, ProxyDock не перехватывает его соединения принудительно и честно отражает уровень применимости (`Подтверждено`, `Совместимо`, `Требует проверки`, `Не проверено`).
+2. **Авторизация в Chromium `--proxy-server`.** Передача `user:pass` в аргументе командной строки небезопасна и не поддерживается универсально в Chromium/Electron. Для прокси с авторизацией в Chromium-приложениях может потребоваться интерактивный ввод или локальный ретранслятор (например, локальный HTTP-прокси на `127.0.0.1` без пароля, перенаправляющий во внешний прокси).
+3. **Уже запущенные single-instance приложения.** Electron/MSIX-клиенты часто передают управление существующему экземпляру, игнорируя переменные окружения нового процесса. Всегда полностью закрывайте целевое приложение (включая значок в трее) перед перезапуском через другой прокси.
+
+---
+
+## Сборка, тестирование и публикация Release
+
+### Сборка Debug и Release
+```powershell
+dotnet restore ProxyDock.slnx
+dotnet build ProxyDock.slnx -c Debug --no-restore
+dotnet build ProxyDock.slnx -c Release --no-restore
+```
+
+### Запуск из исходников
+```powershell
+dotnet run --project src/ProxyDock.App/ProxyDock.App.csproj -c Release
+```
+
+### Запуск автоматических тестов
+```powershell
+dotnet test tests/ProxyDock.Tests/ProxyDock.Tests.csproj -c Release
+```
+
+### Публикация автономного единого EXE (Windows x64, self-contained single-file)
+```powershell
+dotnet restore src/ProxyDock.App/ProxyDock.App.csproj -r win-x64
+dotnet publish src/ProxyDock.App/ProxyDock.App.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:EnableCompressionInSingleFile=true `
+  --no-restore `
+  -o publish/win-x64
+```
+
+Готовый исполняемый файл появится по пути `publish/win-x64/ProxyDock.exe`.
+
+---
+
+## Решение распространённых проблем
+
+- **Приложение запустилось, но ходит напрямую без прокси:** проверьте, не висит ли уже старый экземпляр в системном трее (`Antigravity.exe`, `Claude.exe`, `ChatGPT.exe`, `Codex.exe`); закройте его полностью и запустите снова через ProxyDock.
+- **Прокси проходит TCP-проверку (`Только TCP`), но не проходит HTTPS:** убедитесь, что прокси поддерживает HTTP/HTTPS `CONNECT`, а не является SOCKS5-сервером или веб-страницей.
+- **Код `407` при проверке прокси:** введите актуальные логин и пароль в настройках прокси-профиля.
+- **CLI-команда не найдена:** проверьте, что утилита есть в `PATH`, или укажите полный путь к `.exe` / `.cmd` / `.ps1`.

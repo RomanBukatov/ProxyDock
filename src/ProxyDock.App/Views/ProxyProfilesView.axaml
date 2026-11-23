@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ProxyDock.App.ViewModels"
+             x:Class="ProxyDock.App.Views.ProxyProfilesView"
+             x:DataType="vm:ProxyProfilesViewModel">
+  <ScrollViewer Padding="28,24">
+    <StackPanel Spacing="18" MaxWidth="1280">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Loc[ProxiesTitle]}" Classes="page-title" />
+          <TextBlock Text="{Binding Loc[ProxiesDescription]}" Classes="page-desc" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Button Content="{Binding Loc[BtnTestAll]}" Classes="secondary" Command="{Binding TestAllCommand}" IsVisible="{Binding HasProxies}" />
+          <Button Content="{Binding Loc[BtnAddProxy]}" Classes="primary" Command="{Binding AddProxyCommand}" />
+        </StackPanel>
+      </Grid>
+
+      <Border Classes="card" IsVisible="{Binding !HasProxies}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Прокси-профили ещё не созданы" FontWeight="SemiBold" />
+          <TextBlock Text="Добавьте HTTP-прокси (например, локальный 127.0.0.1:8080 или внешний сервер) и проверьте его подключение."
+                     Classes="caption"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <ItemsControl ItemsSource="{Binding Proxies}" IsVisible="{Binding HasProxies}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ProxyCardViewModel">
+            <Border Classes="card card-interactive" Margin="0,0,0,10">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel Spacing="6">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Name}" Classes="card-title" VerticalAlignment="Center" />
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="HTTP" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource AccentSoftBrush}" IsVisible="{Binding IsDefault}">
+                      <TextBlock Text="По умолчанию" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource InfoSoftBrush}" IsVisible="{Binding HasAuth}">
+                      <TextBlock Text="{Binding AuthBadgeText}" FontSize="11" Foreground="{DynamicResource InfoBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{Binding StatusBackground}">
+                      <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
+                    </Border>
+                  </StackPanel>
+
+                  <StackPanel Orientation="Horizontal" Spacing="18">
+                    <TextBlock Text="{Binding EndpointDisplay}" Classes="mono" />
+                    <TextBlock Text="{Binding LatencyDisplay, StringFormat='Задержка: {0}'}" Classes="caption" />
+                    <TextBlock Text="{Binding ExternalIpDisplay, StringFormat='Внешний IP: {0}'}" Classes="caption" />
+                    <TextBlock Text="{Binding CheckedAtDisplay, StringFormat='Проверено: {0}'}" Classes="caption" />
+                  </StackPanel>
+
+                  <TextBlock Text="{Binding StatusMessage}"
+                             FontSize="12.5"
+                             Foreground="{DynamicResource TextSecondaryBrush}"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <Button Content="{Binding TestButtonText}" Classes="primary" Command="{Binding TestOrCancelCommand}" />
+                  <Button Content="По умолчанию" Classes="secondary" IsVisible="{Binding !IsDefault}" Command="{Binding SetDefaultCommand}" />
+                  <Button Content="Изменить" Classes="secondary" Command="{Binding EditCommand}" />
+                  <Button Content="⋯" Classes="secondary" Padding="10,7">
+                    <Button.Flyout>
+                      <MenuFlyout>
+                        <MenuItem Header="Дублировать" Command="{Binding DuplicateCommand}" />
+                        <Separator />
+                        <MenuItem Header="Удалить" Command="{Binding DeleteCommand}" />
+                      </MenuFlyout>
+                    </Button.Flyout>
+                  </Button>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

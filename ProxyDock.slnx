@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ProxyDock.Core/ProxyDock.Core.csproj" />
+    <Project Path="src/ProxyDock.Infrastructure/ProxyDock.Infrastructure.csproj" />
+    <Project Path="src/ProxyDock.App/ProxyDock.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ProxyDock.TestChild/ProxyDock.TestChild.csproj" />
+    <Project Path="tests/ProxyDock.Tests/ProxyDock.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ProxyDock.App.ViewModels"
+             x:Class="ProxyDock.App.Views.LaunchHistoryView"
+             x:DataType="vm:LaunchHistoryViewModel">
+  <ScrollViewer Padding="28,24">
+    <StackPanel Spacing="18" MaxWidth="1280">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Loc[HistoryTitle]}" Classes="page-title" />
+          <TextBlock Text="{Binding Loc[HistoryDescription]}" Classes="page-desc" />
+        </StackPanel>
+        <Button Grid.Column="1"
+                Content="{Binding Loc[BtnClearHistory]}"
+                Classes="danger"
+                VerticalAlignment="Center"
+                IsVisible="{Binding HasEntries}"
+                Command="{Binding ClearHistoryCommand}" />
+      </Grid>
+
+      <Grid ColumnDefinitions="*,220" ColumnSpacing="12">
+        <TextBox Text="{Binding SearchQuery}" PlaceholderText="Поиск по приложению, прокси или сообщению..." />
+        <ComboBox Grid.Column="1" SelectedIndex="{Binding StatusFilterIndex}" HorizontalAlignment="Stretch">
+          <ComboBoxItem Content="Все статусы" />
+          <ComboBoxItem Content="Успешный старт" />
+          <ComboBoxItem Content="С предупреждением" />
+          <ComboBoxItem Content="Ошибка" />
+        </ComboBox>
+      </Grid>
+
+      <Border Classes="card" Background="{DynamicResource InfoSoftBrush}" BorderBrush="{DynamicResource InfoBrush}" Padding="12">
+        <TextBlock Text="{Binding Loc[HistoryDisclaimer]}" FontSize="12.5" TextWrapping="Wrap" />
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding !HasEntries}">
+        <TextBlock Text="Записей в истории запусков пока нет." Classes="caption" />
+      </Border>
+
+      <ItemsControl ItemsSource="{Binding Entries}" IsVisible="{Binding HasEntries}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HistoryItemViewModel">
+            <Border Classes="card" Margin="0,0,0,10">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding AppName}" Classes="card-title" VerticalAlignment="Center" />
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding KindLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding StrategyLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding ApplicabilityBadge}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{Binding StatusBackground}">
+                      <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
+                    </Border>
+                  </StackPanel>
+
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="{Binding PidText}" Classes="mono caption" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding TimestampText}" Classes="caption" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Grid>
+
+                <TextBlock Text="{Binding ProxyLabel, StringFormat='Прокси: {0}'}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Text="{Binding Entry.Message}" FontSize="12.5" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding WarningsText}"
+                           IsVisible="{Binding HasWarnings}"
+                           FontSize="12"
+                           Foreground="{DynamicResource WarningBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

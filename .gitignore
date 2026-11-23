@@ -1,0 +1,18 @@
+# .NET / Visual Studio / Rider / VS Code
+bin/
+obj/
+publish/
+out/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.log

@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ProxyDock.App.ViewModels"
+        x:Class="ProxyDock.App.Views.ConfirmationDialog"
+        x:DataType="vm:ConfirmationDialogViewModel"
+        Title="{Binding Title}"
+        Icon="avares://ProxyDock/Assets/proxydock.ico"
+        Width="480"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+  <Border Padding="24" Background="{DynamicResource AppCanvasBrush}">
+    <StackPanel Spacing="16">
+      <TextBlock Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding Message}"
+                 Foreground="{DynamicResource TextSecondaryBrush}"
+                 TextWrapping="Wrap"
+                 LineHeight="20" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
+        <Button Content="{Binding CancelText}"
+                Classes="secondary"
+                IsVisible="{Binding ShowCancel}"
+                Command="{Binding CancelCommand}" />
+        <Button Content="{Binding ConfirmText}"
+                Classes="danger"
+                IsVisible="{Binding IsDanger}"
+                Command="{Binding ConfirmCommand}" />
+        <Button Content="{Binding ConfirmText}"
+                Classes="primary"
+                IsVisible="{Binding !IsDanger}"
+                Command="{Binding ConfirmCommand}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

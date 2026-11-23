@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ProxyDock.App.ViewModels"
+             xmlns:models="using:ProxyDock.Core.Models"
+             x:Class="ProxyDock.App.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+  <ScrollViewer Padding="28,24">
+    <StackPanel Spacing="18" MaxWidth="920">
+      <StackPanel Spacing="4">
+        <TextBlock Text="{Binding Loc[SettingsTitle]}" Classes="page-title" />
+        <TextBlock Text="{Binding Loc[SettingsDescription]}" Classes="page-desc" />
+      </StackPanel>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="{Binding Loc[SettingsAppearance]}" Classes="section-title" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+            <StackPanel Spacing="6">
+              <TextBlock Text="{Binding Loc[SettingsTheme]}" FontWeight="Medium" />
+              <ComboBox SelectedIndex="{Binding ThemeIndex}" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="Тёмная (Dark)" />
+                <ComboBoxItem Content="Светлая (Light)" />
+                <ComboBoxItem Content="Системная (Windows)" />
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="6">
+              <TextBlock Text="{Binding Loc[SettingsLanguage]}" FontWeight="Medium" />
+              <ComboBox SelectedIndex="{Binding LanguageIndex}" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="Русский (основной)" />
+                <ComboBoxItem Content="English" />
+              </ComboBox>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Text="{Binding Loc[SettingsTrayAndStartup]}" Classes="section-title" />
+          <CheckBox Content="{Binding Loc[SettingsMinimizeToTray]}" IsChecked="{Binding MinimizeToTray}" />
+          <CheckBox Content="{Binding Loc[SettingsStartMinimized]}" IsChecked="{Binding StartMinimized}" />
+          <CheckBox Content="{Binding Loc[SettingsRunAtStartup]}"
+                    IsChecked="{Binding RunAtWindowsStartup}"
+                    IsEnabled="{Binding IsStartupSupported}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="{Binding Loc[SettingsDefaults]}" Classes="section-title" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+            <StackPanel Spacing="6">
+              <TextBlock Text="{Binding Loc[SettingsDefaultProxy]}" FontWeight="Medium" />
+              <ComboBox ItemsSource="{Binding Proxies}"
+                        SelectedItem="{Binding SelectedDefaultProxy}"
+                        HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="models:ProxyProfile">
+                    <TextBlock Text="{Binding Name}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="6">
+              <TextBlock Text="{Binding Loc[SettingsDefaultTerminal]}" FontWeight="Medium" />
+              <ComboBox SelectedIndex="{Binding DefaultTerminalIndex}" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="Windows Terminal (wt.exe)" />
+                <ComboBoxItem Content="Windows PowerShell" />
+                <ComboBoxItem Content="PowerShell 7 (pwsh)" />
+              </ComboBox>
+            </StackPanel>
+          </Grid>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding Loc[SettingsDefaultCliDir]}" FontWeight="Medium" />
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBox Text="{Binding DefaultCliWorkingDirectory}" PlaceholderText="%USERPROFILE%" />
+              <Button Grid.Column="1" Content="{Binding Loc[BtnBrowse]}" Classes="secondary" Command="{Binding BrowseDefaultCliDirectoryCommand}" />
+              <Button Grid.Column="2" Content="{Binding Loc[BtnSave]}" Classes="secondary" Command="{Binding SaveCliDirectoryCommand}" />
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="{Binding Loc[SettingsLogging]}" Classes="section-title" />
+          <Grid ColumnDefinitions="240,*,Auto,Auto" ColumnSpacing="10">
+            <ComboBox SelectedIndex="{Binding LogLevelIndex}" HorizontalAlignment="Stretch">
+              <ComboBoxItem Content="Trace" />
+              <ComboBoxItem Content="Debug" />
+              <ComboBoxItem Content="Information" />
+              <ComboBoxItem Content="Warning" />
+              <ComboBoxItem Content="Error" />
+            </ComboBox>
+            <Panel Grid.Column="1" />
+            <Button Grid.Column="2" Content="{Binding Loc[BtnOpenLogs]}" Classes="secondary" Command="{Binding OpenLogsFolderCommand}" />
+            <Button Grid.Column="3" Content="{Binding Loc[BtnOpenConfig]}" Classes="secondary" Command="{Binding OpenConfigFolderCommand}" />
+          </Grid>
+
+          <Separator Margin="0,4" />
+
+          <TextBlock Text="{Binding Loc[SettingsTransfer]}" FontWeight="SemiBold" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Content="{Binding Loc[BtnExportConfig]}" Classes="secondary" Command="{Binding ExportConfigurationCommand}" />
+            <Button Content="{Binding Loc[BtnImportConfig]}" Classes="secondary" Command="{Binding ImportConfigurationCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Background="{DynamicResource InfoSoftBrush}" BorderBrush="{DynamicResource InfoBrush}">
+        <StackPanel Spacing="6">
+          <TextBlock Text="{Binding Loc[SettingsLimitationsTitle]}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Loc[SettingsLimitationsBody]}" FontSize="12.5" TextWrapping="Wrap" LineHeight="19" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
