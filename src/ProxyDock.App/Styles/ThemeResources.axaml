@@ -27,9 +27,17 @@
 
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F2F6FC" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A7B4CA" />
-      <SolidColorBrush x:Key="TextMutedBrush" Color="#77869E" />
-      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#6F7E96" />
-      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#8897AF" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#8897AF" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#8897AF" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#9AA9C1" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#9AA9C1" />
+
+      <SolidColorBrush x:Key="ToastSurfaceBrush" Color="#19212E" />
+      <SolidColorBrush x:Key="ToastBorderBrush" Color="#2C384E" />
+      <SolidColorBrush x:Key="MenuSurfaceBrush" Color="#1A2230" />
+      <SolidColorBrush x:Key="MenuBorderBrush" Color="#2D3A50" />
+      <SolidColorBrush x:Key="DisabledSurfaceBrush" Color="#1D2533" />
+      <SolidColorBrush x:Key="DisabledForegroundBrush" Color="#6F7E96" />
 
       <SolidColorBrush x:Key="SuccessBrush" Color="#34D399" />
       <SolidColorBrush x:Key="SuccessSoftBrush" Color="#122D25" />
@@ -67,9 +75,17 @@
 
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#111827" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#4B5565" />
-      <SolidColorBrush x:Key="TextMutedBrush" Color="#6B7688" />
-      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#7A8599" />
-      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#5A6578" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#5C677A" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#5C677A" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#4B5565" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#4B5565" />
+
+      <SolidColorBrush x:Key="ToastSurfaceBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="ToastBorderBrush" Color="#D5DCE8" />
+      <SolidColorBrush x:Key="MenuSurfaceBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="MenuBorderBrush" Color="#D5DCE8" />
+      <SolidColorBrush x:Key="DisabledSurfaceBrush" Color="#E5EAF2" />
+      <SolidColorBrush x:Key="DisabledForegroundBrush" Color="#6B7688" />
 
       <SolidColorBrush x:Key="SuccessBrush" Color="#059669" />
       <SolidColorBrush x:Key="SuccessSoftBrush" Color="#E6F6EF" />

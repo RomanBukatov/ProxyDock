@@ -21,6 +21,7 @@ public sealed class LauncherUiLogicTests
         Assert.False(settings.MinimizeToTray);
         Assert.False(settings.StartMinimized);
         Assert.False(settings.RunAtWindowsStartup);
+        Assert.False(settings.ConfirmBeforeRelaunchingRunningApp);
     }
 
     [Fact]

@@ -14,16 +14,6 @@ namespace ProxyDock.Tests;
 
 public sealed class AppIconAndMsixResolutionTests(ITestOutputHelper output)
 {
-    private static readonly Lazy<bool> AvaloniaReady = new(() =>
-    {
-        if (Application.Current is null)
-        {
-            Program.BuildAvaloniaApp().SetupWithoutStarting();
-        }
-
-        return true;
-    });
-
     [Fact]
     public void MsixManifestExtractor_SelectsUnplatedAndLightUnplatedAssetsForDpiAndTheme()
     {
@@ -101,40 +91,41 @@ public sealed class AppIconAndMsixResolutionTests(ITestOutputHelper output)
             return;
         }
 
-        _ = AvaloniaReady.Value;
-
-        using var scope = new TempTestScope();
-        var discovery = scope.Services.GetRequiredService<IExecutableDiscoveryService>();
-        var extractor = scope.Services.GetRequiredService<IAppIconExtractor>();
-        var cache = new IconCacheService(extractor, discovery);
-
-        foreach (var tpl in BuiltInAppTemplates.DesktopTemplates)
+        AvaloniaTestRuntime.RunOnUiThread(() =>
         {
-            var resolved = discovery.DiscoverTemplate(tpl.Key);
-            if (!resolved.Found || string.IsNullOrWhiteSpace(resolved.ResolvedPath))
+            using var scope = new TempTestScope();
+            var discovery = scope.Services.GetRequiredService<IExecutableDiscoveryService>();
+            var extractor = scope.Services.GetRequiredService<IAppIconExtractor>();
+            var cache = new IconCacheService(extractor, discovery);
+
+            foreach (var tpl in BuiltInAppTemplates.DesktopTemplates)
             {
-                output.WriteLine($"[{tpl.Key}] not installed on this machine, skipping live assertion.");
-                continue;
+                var resolved = discovery.DiscoverTemplate(tpl.Key);
+                if (!resolved.Found || string.IsNullOrWhiteSpace(resolved.ResolvedPath))
+                {
+                    output.WriteLine($"[{tpl.Key}] not installed on this machine, skipping live assertion.");
+                    continue;
+                }
+
+                var darkPixels = extractor.ExtractIconPixels(resolved.ResolvedPath, desiredPixelSize: 128, preferLightTheme: false);
+                var lightPixels = extractor.ExtractIconPixels(resolved.ResolvedPath, desiredPixelSize: 128, preferLightTheme: true);
+
+                Assert.NotNull(darkPixels);
+                Assert.NotNull(lightPixels);
+
+                // Реальные иконки пакетов/приложений должны быть высокого разрешения (не системная 32x32 заглушка!)
+                Assert.True(darkPixels.Value.Width >= 64, $"Expected high-DPI icon >=64px for {tpl.Key}, got {darkPixels.Value.Width}x{darkPixels.Value.Height}");
+                Assert.True(lightPixels.Value.Width >= 64, $"Expected high-DPI light icon >=64px for {tpl.Key}, got {lightPixels.Value.Width}x{lightPixels.Value.Height}");
+
+                var cachedDark = cache.GetIcon(resolved.ResolvedPath, tpl.Key, dipSize: 48, preferLightThemeOverride: false, dpiScaleOverride: 1.5);
+                var cachedLight = cache.GetIcon(resolved.ResolvedPath, tpl.Key, dipSize: 48, preferLightThemeOverride: true, dpiScaleOverride: 1.5);
+                Assert.NotNull(cachedDark);
+                Assert.NotNull(cachedLight);
+                Assert.Same(cachedDark, cache.GetIcon(resolved.ResolvedPath, tpl.Key, dipSize: 48, preferLightThemeOverride: false, dpiScaleOverride: 1.5));
+
+                output.WriteLine($"[{tpl.Key}] OK path={resolved.ResolvedPath} dark={darkPixels.Value.Width}x{darkPixels.Value.Height} light={lightPixels.Value.Width}x{lightPixels.Value.Height}");
             }
-
-            var darkPixels = extractor.ExtractIconPixels(resolved.ResolvedPath, desiredPixelSize: 128, preferLightTheme: false);
-            var lightPixels = extractor.ExtractIconPixels(resolved.ResolvedPath, desiredPixelSize: 128, preferLightTheme: true);
-
-            Assert.NotNull(darkPixels);
-            Assert.NotNull(lightPixels);
-
-            // Реальные иконки пакетов/приложений должны быть высокого разрешения (не системная 32x32 заглушка!)
-            Assert.True(darkPixels.Value.Width >= 64, $"Expected high-DPI icon >=64px for {tpl.Key}, got {darkPixels.Value.Width}x{darkPixels.Value.Height}");
-            Assert.True(lightPixels.Value.Width >= 64, $"Expected high-DPI light icon >=64px for {tpl.Key}, got {lightPixels.Value.Width}x{lightPixels.Value.Height}");
-
-            var cachedDark = cache.GetIcon(resolved.ResolvedPath, tpl.Key, dipSize: 48, preferLightThemeOverride: false, dpiScaleOverride: 1.5);
-            var cachedLight = cache.GetIcon(resolved.ResolvedPath, tpl.Key, dipSize: 48, preferLightThemeOverride: true, dpiScaleOverride: 1.5);
-            Assert.NotNull(cachedDark);
-            Assert.NotNull(cachedLight);
-            Assert.Same(cachedDark, cache.GetIcon(resolved.ResolvedPath, tpl.Key, dipSize: 48, preferLightThemeOverride: false, dpiScaleOverride: 1.5));
-
-            output.WriteLine($"[{tpl.Key}] OK path={resolved.ResolvedPath} dark={darkPixels.Value.Width}x{darkPixels.Value.Height} light={lightPixels.Value.Width}x{lightPixels.Value.Height}");
-        }
+        });
     }
 
     private static void WriteSolidPng(string path, int width, int height, byte r, byte g, byte b, byte a)

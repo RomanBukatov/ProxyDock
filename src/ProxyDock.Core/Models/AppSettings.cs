@@ -17,4 +17,5 @@ public sealed class AppSettings
     public string? DefaultCliWorkingDirectory { get; set; }
     public string MinimumLogLevel { get; set; } = "Information";
     public int MaxHistoryEntries { get; set; } = 200;
+    public bool ConfirmBeforeRelaunchingRunningApp { get; set; } = false;
 }

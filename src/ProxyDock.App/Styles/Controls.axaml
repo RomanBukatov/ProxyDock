@@ -201,6 +201,10 @@
     <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource AccentTextOnFillBrush}" />
   </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource DisabledSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource DisabledForegroundBrush}" />
+  </Style>
 
   <Style Selector="Button.launch-btn">
     <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
@@ -218,6 +222,13 @@
   <Style Selector="Button.launch-btn:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource AccentTextOnFillBrush}" />
+  </Style>
+  <Style Selector="Button.launch-btn:disabled">
+    <Setter Property="Cursor" Value="Arrow" />
+  </Style>
+  <Style Selector="Button.launch-btn:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource DisabledSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource DisabledForegroundBrush}" />
   </Style>
 
   <Style Selector="Button.secondary">
@@ -331,6 +342,8 @@
   <!-- Поля ввода и выпадающие списки -->
   <Style Selector="TextBox">
     <Setter Property="Background" Value="{DynamicResource InputSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="PlaceholderForeground" Value="{DynamicResource TextControlPlaceholderForeground}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="MinHeight" Value="34" />
@@ -364,5 +377,22 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="10" />
     <Setter Property="Padding" Value="12,8" />
+  </Style>
+
+  <!-- Компактные всплывающие toast-уведомления -->
+  <Style Selector="Border.toast-card">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="12,9" />
+    <Setter Property="BoxShadow" Value="0 8 24 0 #44000000" />
+  </Style>
+
+  <!-- Выпадающие меню -->
+  <Style Selector="MenuFlyoutPresenter">
+    <Setter Property="Background" Value="{DynamicResource MenuSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource MenuBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="4" />
   </Style>
 </Styles>

@@ -78,6 +78,7 @@ public sealed class DesktopLaunchStrategy : ILaunchStrategy
 
         var stack = discovery.StackInfo ?? _discovery.InspectExecutable(discovery.ResolvedPath, application.TemplateKey);
         var warnings = new List<string>();
+        var diagnosticNotes = new List<string>();
         var strategy = isDirectNoProxy || proxy is null
             ? LaunchRoutingStrategy.DirectNoProxy
             : LaunchRoutingStrategy.EnvironmentOnly;
@@ -116,7 +117,7 @@ public sealed class DesktopLaunchStrategy : ILaunchStrategy
         {
             foreach (var caveat in stack.Caveats)
             {
-                warnings.Add(caveat);
+                diagnosticNotes.Add(caveat);
             }
         }
 
@@ -143,6 +144,7 @@ public sealed class DesktopLaunchStrategy : ILaunchStrategy
             ApplicabilityLevel = effectiveApplicability,
             ApplicabilityNote = note,
             Warnings = warnings,
+            DiagnosticNotes = diagnosticNotes,
             SensitiveValues = envDelta.SensitiveValues
         };
 

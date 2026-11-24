@@ -20,6 +20,7 @@ public interface IProcessTracker : IDisposable
     IReadOnlyCollection<TrackedProcessInfo> ActiveProcesses { get; }
     void Track(Process process, ApplicationProfile application, string resolvedTarget);
     IReadOnlyList<int> FindRunningInstances(string resolvedExecutablePath, IReadOnlyCollection<string>? relatedProcessNames = null);
+    RunningAppInspection InspectRunningInstances(string resolvedExecutablePath, IReadOnlyCollection<string>? relatedProcessNames = null, string? templateKey = null);
 }
 
 public interface ILaunchStrategy

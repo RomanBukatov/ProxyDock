@@ -24,4 +24,6 @@ public sealed class LaunchHistoryEntry
     public string? ApplicabilityNote { get; set; }
     public string Message { get; set; } = string.Empty;
     public List<string> Warnings { get; set; } = [];
+    public List<string> DiagnosticNotes { get; set; } = [];
+    public string? ProcessDetectionSummary { get; set; }
 }

@@ -27,7 +27,8 @@ internal sealed record MsixPackageInfo(
     string ManifestPath,
     string? ApplicationId,
     string? AliasFileName,
-    string? TargetExecutablePath);
+    string? TargetExecutablePath,
+    string? PackageFamilyName = null);
 
 internal sealed record MsixLogoReference(
     string RelativePath,
@@ -166,7 +167,8 @@ internal static class MsixPackageResolver
                     Path.Combine(rootFromTarget, "AppxManifest.xml"),
                     link.ApplicationId,
                     aliasName,
-                    link.TargetExecutablePath);
+                    link.TargetExecutablePath,
+                    link.PackageFamilyName);
             }
 
             var rootFromFamily = TryResolvePackageRootFromRegistryByFamily(link.PackageFamilyName);
@@ -177,7 +179,8 @@ internal static class MsixPackageResolver
                     Path.Combine(rootFromFamily, "AppxManifest.xml"),
                     link.ApplicationId,
                     aliasName,
-                    link.TargetExecutablePath);
+                    link.TargetExecutablePath,
+                    link.PackageFamilyName);
             }
         }
 
@@ -196,6 +199,12 @@ internal static class MsixPackageResolver
         // 3. Fallback через HKCU AppModel\Repository\Packages для путей WindowsApps
         if (IsWindowsAppsAliasPath(normalized))
         {
+            var parentFolderName = Path.GetFileName(Path.GetDirectoryName(normalized) ?? string.Empty);
+            string? fallbackFamily = !parentFolderName.Equals("WindowsApps", StringComparison.OrdinalIgnoreCase)
+                && parentFolderName.Contains('_')
+                    ? parentFolderName
+                    : null;
+
             var regRoot = TryResolvePackageRootFromRegistryByAlias(normalized, templateKey);
             if (regRoot is not null)
             {
@@ -204,7 +213,8 @@ internal static class MsixPackageResolver
                     Path.Combine(regRoot, "AppxManifest.xml"),
                     ApplicationId: null,
                     AliasFileName: aliasName,
-                    TargetExecutablePath: null);
+                    TargetExecutablePath: null,
+                    PackageFamilyName: fallbackFamily);
             }
         }
 

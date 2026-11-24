@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -7,10 +9,94 @@ using ProxyDock.Core.Interfaces;
 
 namespace ProxyDock.App.ViewModels;
 
+public sealed partial class ToastNotificationViewModel : ObservableObject
+{
+    private readonly Action<ToastNotificationViewModel> _dismissAction;
+    private readonly Action? _openHistoryAction;
+    private readonly CancellationTokenSource _timerCts = new();
+
+    public ToastNotificationViewModel(
+        AppNotification notification,
+        ILocalizationService loc,
+        Action<ToastNotificationViewModel> dismissAction,
+        Action? openHistoryAction = null)
+    {
+        Id = Guid.NewGuid();
+        Title = notification.Title;
+        Message = notification.Message;
+        Severity = notification.Severity;
+        ShowOpenHistoryAction = notification.ShowOpenHistoryAction && openHistoryAction is not null;
+        Loc = loc;
+        _dismissAction = dismissAction;
+        _openHistoryAction = openHistoryAction;
+    }
+
+    public Guid Id { get; }
+    public string Title { get; }
+    public string Message { get; }
+    public NotificationSeverity Severity { get; }
+    public bool ShowOpenHistoryAction { get; }
+    public ILocalizationService Loc { get; }
+    public bool HasMessage => !string.IsNullOrWhiteSpace(Message);
+    public CancellationToken TimerToken => _timerCts.Token;
+
+    public IBrush AccentBrush => Severity switch
+    {
+        NotificationSeverity.Success => FormatHelpers.Brush("SuccessBrush"),
+        NotificationSeverity.Warning => FormatHelpers.Brush("WarningBrush"),
+        NotificationSeverity.Error => FormatHelpers.Brush("ErrorBrush"),
+        _ => FormatHelpers.Brush("InfoBrush")
+    };
+
+    public IBrush SurfaceBrush => FormatHelpers.Brush("ToastSurfaceBrush");
+    public IBrush BorderBrush => Severity switch
+    {
+        NotificationSeverity.Error => FormatHelpers.Brush("ErrorBrush"),
+        NotificationSeverity.Warning => FormatHelpers.Brush("WarningBrush"),
+        _ => FormatHelpers.Brush("ToastBorderBrush")
+    };
+
+    public void RefreshThemeBrushes()
+    {
+        OnPropertyChanged(nameof(AccentBrush));
+        OnPropertyChanged(nameof(SurfaceBrush));
+        OnPropertyChanged(nameof(BorderBrush));
+    }
+
+    public void CancelAutoDismiss()
+    {
+        try
+        {
+            _timerCts.Cancel();
+        }
+        catch
+        {
+            // Игнорируем повторную отмену
+        }
+        finally
+        {
+            _timerCts.Dispose();
+        }
+    }
+
+    [RelayCommand]
+    private void Dismiss() => _dismissAction(this);
+
+    [RelayCommand]
+    private void OpenHistory()
+    {
+        _openHistoryAction?.Invoke();
+        _dismissAction(this);
+    }
+}
+
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
+    private const int MaxVisibleToasts = 3;
+
     private readonly IConfigDiagnosticsStore _diagnostics;
     private readonly ISettingsService _settingsService;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayFunc;
 
     [ObservableProperty]
     private int _selectedNavIndex;
@@ -21,18 +107,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isTrayEnabled;
 
-    [ObservableProperty]
-    private bool _bannerVisible;
-
-    [ObservableProperty]
-    private string _bannerTitle = string.Empty;
-
-    [ObservableProperty]
-    private string _bannerMessage = string.Empty;
-
-    [ObservableProperty]
-    private NotificationSeverity _bannerSeverity;
-
     public MainWindowViewModel(
         ILocalizationService loc,
         IConfigDiagnosticsStore diagnostics,
@@ -41,11 +115,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ApplicationsViewModel applicationsVm,
         ProxyProfilesViewModel proxiesVm,
         LaunchHistoryViewModel historyVm,
-        SettingsViewModel settingsVm)
+        SettingsViewModel settingsVm,
+        Func<TimeSpan, CancellationToken, Task>? delayFunc = null)
         : base(loc)
     {
         _diagnostics = diagnostics;
         _settingsService = settingsService;
+        _delayFunc = delayFunc ?? ((d, ct) => Task.Delay(d, ct));
 
         Applications = applicationsVm;
         Applications.NavigateAction = NavigateByKey;
@@ -55,22 +131,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _currentPage = Applications;
 
-        notifications.NotificationRaised += (_, n) => Dispatcher.UIThread.Post(() =>
+        notifications.NotificationRaised += (_, n) =>
         {
-            BannerTitle = n.Title;
-            BannerMessage = n.Message;
-            BannerSeverity = n.Severity;
-            BannerVisible = true;
-        });
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                EnqueueToast(n);
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(() => EnqueueToast(n));
+            }
+        };
 
         _diagnostics.WarningsChanged += (_, _) => ShowConfigWarningsIfAny();
         _settingsService.SettingsChanged += (_, updated) => Dispatcher.UIThread.Post(() =>
         {
             IsTrayEnabled = updated.MinimizeToTray;
-            OnPropertyChanged(nameof(BannerBackground));
-            OnPropertyChanged(nameof(BannerBorder));
+            RefreshToastBrushes();
             _ = RefreshCurrentPageAsync();
         });
+
+        if (Application.Current is { } app)
+        {
+            app.ActualThemeVariantChanged += (_, _) => Dispatcher.UIThread.Post(RefreshToastBrushes);
+        }
     }
 
     public ApplicationsViewModel Applications { get; }
@@ -78,27 +162,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public LaunchHistoryViewModel History { get; }
     public SettingsViewModel Settings { get; }
 
-    public IBrush BannerBackground => BannerSeverity switch
-    {
-        NotificationSeverity.Success => FormatHelpers.Brush("SuccessSoftBrush"),
-        NotificationSeverity.Warning => FormatHelpers.Brush("WarningSoftBrush"),
-        NotificationSeverity.Error => FormatHelpers.Brush("ErrorSoftBrush"),
-        _ => FormatHelpers.Brush("InfoSoftBrush")
-    };
-
-    public IBrush BannerBorder => BannerSeverity switch
-    {
-        NotificationSeverity.Success => FormatHelpers.Brush("SuccessBrush"),
-        NotificationSeverity.Warning => FormatHelpers.Brush("WarningBrush"),
-        NotificationSeverity.Error => FormatHelpers.Brush("ErrorBrush"),
-        _ => FormatHelpers.Brush("InfoBrush")
-    };
-
-    partial void OnBannerSeverityChanged(NotificationSeverity value)
-    {
-        OnPropertyChanged(nameof(BannerBackground));
-        OnPropertyChanged(nameof(BannerBorder));
-    }
+    public ObservableCollection<ToastNotificationViewModel> Toasts { get; } = [];
+    public bool HasToasts => Toasts.Count > 0;
 
     public bool IsApplicationsSelected
     {
@@ -167,6 +232,73 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         };
     }
 
+    public void EnqueueToast(AppNotification notification)
+    {
+        while (Toasts.Count >= MaxVisibleToasts)
+        {
+            var victim = Toasts.FirstOrDefault(t => t.Severity != NotificationSeverity.Error) ?? Toasts[0];
+            RemoveToast(victim);
+        }
+
+        var vm = new ToastNotificationViewModel(
+            notification,
+            Loc,
+            RemoveToast,
+            notification.ShowOpenHistoryAction ? () => NavigateByKey("History") : null);
+
+        Toasts.Add(vm);
+        OnPropertyChanged(nameof(HasToasts));
+
+        if (notification.AutoDismissAfter is TimeSpan delay && delay > TimeSpan.Zero)
+        {
+            _ = AutoDismissAfterDelayAsync(vm, delay);
+        }
+    }
+
+    private async Task AutoDismissAfterDelayAsync(ToastNotificationViewModel toast, TimeSpan delay)
+    {
+        try
+        {
+            await _delayFunc(delay, toast.TimerToken);
+            if (!toast.TimerToken.IsCancellationRequested)
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                {
+                    RemoveToast(toast);
+                }
+                else
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => RemoveToast(toast));
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Закрыто вручную
+        }
+        catch (ObjectDisposedException)
+        {
+            // Тост уже удалён
+        }
+    }
+
+    private void RemoveToast(ToastNotificationViewModel toast)
+    {
+        if (Toasts.Remove(toast))
+        {
+            toast.CancelAutoDismiss();
+            OnPropertyChanged(nameof(HasToasts));
+        }
+    }
+
+    private void RefreshToastBrushes()
+    {
+        foreach (var toast in Toasts)
+        {
+            toast.RefreshThemeBrushes();
+        }
+    }
+
     private async Task RefreshCurrentPageAsync()
     {
         switch (SelectedNavIndex)
@@ -194,19 +326,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        Dispatcher.UIThread.Post(() =>
-        {
-            BannerTitle = "Восстановление повреждённой конфигурации";
-            BannerMessage = string.Join(" ", warnings.Select(w => w.Message));
-            BannerSeverity = NotificationSeverity.Warning;
-            BannerVisible = true;
-        });
-    }
+        var notification = new AppNotification(
+            "Восстановление повреждённой конфигурации",
+            string.Join(" ", warnings.Select(w => w.Message)),
+            NotificationSeverity.Warning,
+            AutoDismissAfter: null);
 
-    [RelayCommand]
-    private void DismissBanner()
-    {
-        BannerVisible = false;
-        _diagnostics.ClearWarnings();
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            EnqueueToast(notification);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => EnqueueToast(notification));
+        }
     }
 }

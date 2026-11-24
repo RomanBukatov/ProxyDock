@@ -30,6 +30,7 @@ public sealed class LaunchPlan
     public ProxyApplicabilityLevel ApplicabilityLevel { get; init; } = ProxyApplicabilityLevel.Unverified;
     public string? ApplicabilityNote { get; init; }
     public List<string> Warnings { get; init; } = [];
+    public List<string> DiagnosticNotes { get; init; } = [];
     public IReadOnlyList<string> SensitiveValues { get; init; } = [];
 }
 
@@ -41,12 +42,16 @@ public sealed class LaunchResult
     public LaunchStatus Status { get; init; }
     public int? ProcessId { get; init; }
     public LaunchRoutingStrategy Strategy { get; init; }
+    public string? ProxyName { get; init; }
     public string Message { get; init; } = string.Empty;
     public string? SuggestedAction { get; init; }
     public ProxyApplicabilityLevel ApplicabilityLevel { get; init; } = ProxyApplicabilityLevel.Unverified;
     public string? ApplicabilityNote { get; init; }
     public List<string> Warnings { get; init; } = [];
+    public List<string> DiagnosticNotes { get; init; } = [];
     public List<int> AlreadyRunningProcessIds { get; init; } = [];
+    public bool AlreadyRunningMainInstanceDetected { get; init; }
+    public RunningAppInspection? RunningInstanceInspection { get; init; }
     public bool RequiresExistingProcessConfirmation { get; init; }
     public LaunchHistoryEntry? HistoryEntry { get; init; }
 }

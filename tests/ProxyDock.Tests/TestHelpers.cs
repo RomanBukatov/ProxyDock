@@ -1,7 +1,98 @@
+using System.Collections.Concurrent;
+using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
+using ProxyDock.App;
 using ProxyDock.Infrastructure;
 
 namespace ProxyDock.Tests;
+
+internal static class AvaloniaTestRuntime
+{
+    private static readonly BlockingCollection<Action> Queue = new();
+    private static readonly Thread UiThread = CreateUiThread();
+
+    private static Thread CreateUiThread()
+    {
+        var ready = new ManualResetEventSlim(false);
+        Exception? initError = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                if (Application.Current is null)
+                {
+                    Program.BuildAvaloniaApp().SetupWithoutStarting();
+                }
+            }
+            catch (Exception ex)
+            {
+                initError = ex;
+            }
+            finally
+            {
+                ready.Set();
+            }
+
+            foreach (var work in Queue.GetConsumingEnumerable())
+            {
+                work();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "AvaloniaTestUiThread"
+        };
+
+        if (OperatingSystem.IsWindows())
+        {
+            thread.SetApartmentState(ApartmentState.STA);
+        }
+
+        thread.Start();
+        ready.Wait();
+        if (initError is not null)
+        {
+            throw new InvalidOperationException("Failed to initialize Avalonia test runtime.", initError);
+        }
+
+        return thread;
+    }
+
+    public static void RunOnUiThread(Action action)
+    {
+        _ = UiThread;
+        if (Thread.CurrentThread == UiThread)
+        {
+            action();
+            return;
+        }
+
+        var done = new ManualResetEventSlim(false);
+        Exception? error = null;
+        Queue.Add(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+            finally
+            {
+                done.Set();
+            }
+        });
+
+        done.Wait();
+        if (error is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+        }
+    }
+}
 
 internal sealed class TempTestScope : IDisposable
 {

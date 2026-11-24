@@ -87,7 +87,7 @@
                 </ComboBox>
               </Grid>
             </Border>
-            <Border Classes="list-row" BorderThickness="0">
+            <Border Classes="list-row">
               <StackPanel Spacing="6">
                 <TextBlock Text="{Binding Loc[SettingsDefaultCliDir]}" />
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
@@ -102,6 +102,10 @@
                           Command="{Binding SaveCliDirectoryCommand}" />
                 </Grid>
               </StackPanel>
+            </Border>
+            <Border Classes="list-row" BorderThickness="0">
+              <CheckBox Content="{Binding Loc[SettingsConfirmRelaunch]}"
+                        IsChecked="{Binding ConfirmBeforeRelaunchingRunningApp}" />
             </Border>
           </StackPanel>
         </Border>

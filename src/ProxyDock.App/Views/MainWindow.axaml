@@ -11,130 +11,164 @@
         MinWidth="500"
         MinHeight="380"
         WindowStartupLocation="CenterScreen">
-  <DockPanel Background="{DynamicResource AppCanvasBrush}">
-    <!-- Верхняя панель лаунчера -->
-    <Border DockPanel.Dock="Top"
-            Background="{DynamicResource HeaderSurfaceBrush}"
-            BorderBrush="{DynamicResource BorderSubtleBrush}"
-            BorderThickness="0,0,0,1"
-            Padding="20,9">
-      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-          <Border Width="26"
-                  Height="26"
-                  CornerRadius="7"
-                  Background="{DynamicResource AccentBrush}">
-            <Path Data="M 5,8 L 11,4 L 17,8 L 17,14 L 11,18 L 5,14 Z M 11,4 L 11,11 M 5,8 L 11,11 L 17,8"
-                  Stroke="{DynamicResource AccentTextOnFillBrush}"
-                  StrokeThickness="1.6"
-                  Width="22"
-                  Height="22"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center" />
-          </Border>
-          <TextBlock Text="{Binding Loc[AppTitle]}"
-                     FontSize="14.5"
-                     FontWeight="SemiBold"
-                     VerticalAlignment="Center" />
-        </StackPanel>
-
-        <Border Grid.Column="2"
-                Background="{DynamicResource NavTrackBrush}"
-                BorderBrush="{DynamicResource BorderSubtleBrush}"
-                BorderThickness="1"
-                CornerRadius="9"
-                Padding="3"
-                VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="2">
-            <RadioButton Classes="nav-tab"
-                         GroupName="MainNav"
-                         IsChecked="{Binding IsApplicationsSelected}"
-                         Content="{Binding Loc[NavApplications]}" />
-            <RadioButton Classes="nav-tab"
-                         GroupName="MainNav"
-                         IsChecked="{Binding IsProxiesSelected}"
-                         Content="{Binding Loc[NavProxies]}" />
-            <RadioButton Classes="nav-tab"
-                         GroupName="MainNav"
-                         IsChecked="{Binding IsHistorySelected}"
-                         Content="{Binding Loc[NavHistory]}" />
-            <RadioButton Classes="nav-tab"
-                         GroupName="MainNav"
-                         IsChecked="{Binding IsSettingsSelected}"
-                         Content="{Binding Loc[NavSettings]}" />
+  <Grid Background="{DynamicResource AppCanvasBrush}">
+    <DockPanel>
+      <!-- Верхняя панель лаунчера -->
+      <Border DockPanel.Dock="Top"
+              Background="{DynamicResource HeaderSurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSubtleBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="20,9">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+          <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+            <Border Width="26"
+                    Height="26"
+                    CornerRadius="7"
+                    Background="{DynamicResource AccentBrush}">
+              <Path Data="M 5,8 L 11,4 L 17,8 L 17,14 L 11,18 L 5,14 Z M 11,4 L 11,11 M 5,8 L 11,11 L 17,8"
+                    Stroke="{DynamicResource AccentTextOnFillBrush}"
+                    StrokeThickness="1.6"
+                    Width="22"
+                    Height="22"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="{Binding Loc[AppTitle]}"
+                       FontSize="14.5"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
           </StackPanel>
-        </Border>
-      </Grid>
-    </Border>
 
-    <!-- Ненавязчивая нижняя строка состояния -->
-    <Border DockPanel.Dock="Bottom"
-            Background="{DynamicResource HeaderSurfaceBrush}"
-            BorderBrush="{DynamicResource BorderSubtleBrush}"
-            BorderThickness="0,1,0,0"
-            Padding="20,5">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-          <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding Loc[SystemProxyUnchangedShort]}"
+          <Border Grid.Column="2"
+                  Background="{DynamicResource NavTrackBrush}"
+                  BorderBrush="{DynamicResource BorderSubtleBrush}"
+                  BorderThickness="1"
+                  CornerRadius="9"
+                  Padding="3"
+                  VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <RadioButton Classes="nav-tab"
+                           GroupName="MainNav"
+                           IsChecked="{Binding IsApplicationsSelected}"
+                           Content="{Binding Loc[NavApplications]}" />
+              <RadioButton Classes="nav-tab"
+                           GroupName="MainNav"
+                           IsChecked="{Binding IsProxiesSelected}"
+                           Content="{Binding Loc[NavProxies]}" />
+              <RadioButton Classes="nav-tab"
+                           GroupName="MainNav"
+                           IsChecked="{Binding IsHistorySelected}"
+                           Content="{Binding Loc[NavHistory]}" />
+              <RadioButton Classes="nav-tab"
+                           GroupName="MainNav"
+                           IsChecked="{Binding IsSettingsSelected}"
+                           Content="{Binding Loc[NavSettings]}" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <!-- Ненавязчивая нижняя строка состояния -->
+      <Border DockPanel.Dock="Bottom"
+              Background="{DynamicResource HeaderSurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSubtleBrush}"
+              BorderThickness="0,1,0,0"
+              Padding="20,5">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Loc[SystemProxyUnchangedShort]}"
+                       FontSize="11.5"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock Grid.Column="1"
+                     Text="{Binding Loc[TrayActiveBadge]}"
                      FontSize="11.5"
-                     Foreground="{DynamicResource TextMutedBrush}"
-                     TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource AccentBrush}"
+                     IsVisible="{Binding IsTrayEnabled}"
                      VerticalAlignment="Center" />
-        </StackPanel>
-        <TextBlock Grid.Column="1"
-                   Text="{Binding Loc[TrayActiveBadge]}"
-                   FontSize="11.5"
-                   Foreground="{DynamicResource AccentBrush}"
-                   IsVisible="{Binding IsTrayEnabled}"
-                   VerticalAlignment="Center" />
-      </Grid>
-    </Border>
+        </Grid>
+      </Border>
 
-    <!-- Баннер уведомлений -->
-    <Border DockPanel.Dock="Top"
-            Margin="20,12,20,0"
-            Padding="12,9"
-            CornerRadius="8"
-            BorderThickness="1"
-            Background="{Binding BannerBackground}"
-            BorderBrush="{Binding BannerBorder}"
-            IsVisible="{Binding BannerVisible}">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-        <StackPanel Spacing="2">
-          <TextBlock Text="{Binding BannerTitle}" FontSize="12.5" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding BannerMessage}"
-                     FontSize="12"
-                     Foreground="{DynamicResource TextSecondaryBrush}"
-                     TextWrapping="Wrap" />
-        </StackPanel>
-        <Button Grid.Column="1"
-                Content="✕"
-                Classes="icon-btn"
-                Width="26"
-                Height="26"
-                FontSize="12"
-                VerticalAlignment="Top"
-                Command="{Binding DismissBannerCommand}" />
-      </Grid>
-    </Border>
+      <!-- Рабочая область -->
+      <ContentControl Content="{Binding CurrentPage}">
+        <ContentControl.DataTemplates>
+          <DataTemplate DataType="vm:ApplicationsViewModel">
+            <views:ApplicationsView />
+          </DataTemplate>
+          <DataTemplate DataType="vm:ProxyProfilesViewModel">
+            <views:ProxyProfilesView />
+          </DataTemplate>
+          <DataTemplate DataType="vm:LaunchHistoryViewModel">
+            <views:LaunchHistoryView />
+          </DataTemplate>
+          <DataTemplate DataType="vm:SettingsViewModel">
+            <views:SettingsView />
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
+    </DockPanel>
 
-    <!-- Рабочая область -->
-    <ContentControl Content="{Binding CurrentPage}">
-      <ContentControl.DataTemplates>
-        <DataTemplate DataType="vm:ApplicationsViewModel">
-          <views:ApplicationsView />
+    <!-- Компактные всплывающие toast-уведомления без сдвига основного контента -->
+    <ItemsControl ItemsSource="{Binding Toasts}"
+                  IsVisible="{Binding HasToasts}"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Bottom"
+                  Margin="0,0,18,40"
+                  MaxWidth="360">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="8" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:ToastNotificationViewModel">
+          <Border Classes="toast-card"
+                  Background="{Binding SurfaceBrush}"
+                  BorderBrush="{Binding BorderBrush}">
+            <Grid ColumnDefinitions="3,*,Auto" ColumnSpacing="10">
+              <Border Grid.Column="0"
+                      CornerRadius="2"
+                      Background="{Binding AccentBrush}"
+                      VerticalAlignment="Stretch" />
+
+              <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="12.5"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Message}"
+                           IsVisible="{Binding HasMessage}"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           MaxLines="3" />
+                <Button Content="{Binding Loc[NavHistory]}"
+                        Classes="subtle"
+                        Padding="0,2"
+                        Margin="0,2,0,0"
+                        HorizontalAlignment="Left"
+                        FontSize="11.5"
+                        IsVisible="{Binding ShowOpenHistoryAction}"
+                        Command="{Binding OpenHistoryCommand}" />
+              </StackPanel>
+
+              <Button Grid.Column="2"
+                      Content="✕"
+                      Classes="icon-btn"
+                      Width="24"
+                      Height="24"
+                      FontSize="11"
+                      VerticalAlignment="Top"
+                      ToolTip.Tip="{Binding Loc[BtnClose]}"
+                      Command="{Binding DismissCommand}" />
+            </Grid>
+          </Border>
         </DataTemplate>
-        <DataTemplate DataType="vm:ProxyProfilesViewModel">
-          <views:ProxyProfilesView />
-        </DataTemplate>
-        <DataTemplate DataType="vm:LaunchHistoryViewModel">
-          <views:LaunchHistoryView />
-        </DataTemplate>
-        <DataTemplate DataType="vm:SettingsViewModel">
-          <views:SettingsView />
-        </DataTemplate>
-      </ContentControl.DataTemplates>
-    </ContentControl>
-  </DockPanel>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </Grid>
 </Window>

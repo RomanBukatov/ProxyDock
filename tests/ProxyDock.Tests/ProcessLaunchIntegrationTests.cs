@@ -243,7 +243,7 @@ public sealed class ProcessLaunchIntegrationTests
     }
 
     [Fact]
-    public async Task LaunchAsync_DetectsAlreadyRunningDesktopProcess_WithoutKillingIt()
+    public async Task LaunchAsync_SeamlessRelaunchByDefault_LaunchesWithoutModalAndWithoutKillingExistingProcess()
     {
         using var scope = new TempTestScope();
         var proxyService = scope.Services.GetRequiredService<IProxyProfileService>();
@@ -265,6 +265,7 @@ public sealed class ProcessLaunchIntegrationTests
         Assert.NotNull(first.ProcessId);
 
         Process? runningProc = null;
+        Process? secondProc = null;
         try
         {
             await WaitForChildOutputAsync(sleepOut);
@@ -274,11 +275,74 @@ public sealed class ProcessLaunchIntegrationTests
             var relatedPids = tracker.FindRunningInstances(@"C:\Fake\claude-desktop.exe", ["ProxyDock.TestChild"]);
             Assert.Contains(first.ProcessId.Value, relatedPids);
 
+            // По умолчанию повторный запуск выполняется бесшовно без модального подтверждения
+            var second = await launcher.LaunchAsync(new LaunchRequest { Application = app, IgnoreAlreadyRunningWarning = false });
+            Assert.Equal(LaunchStatus.StartedWithWarning, second.Status);
+            Assert.False(second.RequiresExistingProcessConfirmation);
+            Assert.True(second.AlreadyRunningMainInstanceDetected);
+            Assert.Contains(first.ProcessId.Value, second.AlreadyRunningProcessIds);
+            Assert.Contains(second.Warnings, w => w.Contains("уже работает", StringComparison.OrdinalIgnoreCase));
+            Assert.NotNull(second.HistoryEntry?.ProcessDetectionSummary);
+            Assert.False(runningProc.HasExited); // ProxyDock не убивает существующий процесс!
+
+            if (second.ProcessId is int secondPid && secondPid != first.ProcessId.Value)
+            {
+                try { secondProc = Process.GetProcessById(secondPid); } catch { }
+            }
+        }
+        finally
+        {
+            foreach (var p in new[] { runningProc, secondProc })
+            {
+                if (p is null) continue;
+                try
+                {
+                    if (!p.HasExited) p.Kill();
+                }
+                catch { }
+                p.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task LaunchAsync_OptInConfirmation_RequestsConfirmationWithoutKillingExistingProcess()
+    {
+        using var scope = new TempTestScope();
+        var proxyService = scope.Services.GetRequiredService<IProxyProfileService>();
+        var settingsService = scope.Services.GetRequiredService<ISettingsService>();
+        var launcher = scope.Services.GetRequiredService<IApplicationLauncher>();
+
+        var settings = await settingsService.GetAsync();
+        settings.ConfirmBeforeRelaunchingRunningApp = true;
+        await settingsService.SaveAsync(settings);
+
+        await proxyService.SaveAsync(new ProxyProfile { Name = "P", Host = "127.0.0.1", Port = 8080, IsDefault = true });
+        var testChildExe = TestPaths.LocateTestChildExecutable();
+        var sleepOut = Path.Combine(scope.RootPath, "sleep-optin.json");
+
+        var app = new ApplicationProfile
+        {
+            Name = "OptIn Confirm App",
+            LaunchKind = LaunchKind.Desktop,
+            ExecutableOrCommand = testChildExe,
+            Arguments = $"--output \"{sleepOut}\" --sleep-ms 10000"
+        };
+
+        var first = await launcher.LaunchAsync(new LaunchRequest { Application = app, IgnoreAlreadyRunningWarning = true });
+        Assert.NotNull(first.ProcessId);
+
+        Process? runningProc = null;
+        try
+        {
+            await WaitForChildOutputAsync(sleepOut);
+            runningProc = Process.GetProcessById(first.ProcessId!.Value);
+
             var second = await launcher.LaunchAsync(new LaunchRequest { Application = app, IgnoreAlreadyRunningWarning = false });
             Assert.Equal(LaunchStatus.Cancelled, second.Status);
             Assert.True(second.RequiresExistingProcessConfirmation);
             Assert.Contains(first.ProcessId.Value, second.AlreadyRunningProcessIds);
-            Assert.False(runningProc.HasExited); // ProxyDock не убивает процесс!
+            Assert.False(runningProc.HasExited);
         }
         finally
         {
@@ -286,15 +350,9 @@ public sealed class ProcessLaunchIntegrationTests
             {
                 try
                 {
-                    if (!runningProc.HasExited)
-                    {
-                        runningProc.Kill();
-                    }
+                    if (!runningProc.HasExited) runningProc.Kill();
                 }
-                catch
-                {
-                }
-
+                catch { }
                 runningProc.Dispose();
             }
         }

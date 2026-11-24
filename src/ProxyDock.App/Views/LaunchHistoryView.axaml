@@ -106,6 +106,16 @@
                              FontSize="12"
                              Foreground="{DynamicResource TextSecondaryBrush}"
                              TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding ProcessDetectionSummary}"
+                             IsVisible="{Binding HasProcessDetectionSummary}"
+                             FontSize="11.5"
+                             Foreground="{DynamicResource TextMutedBrush}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding DiagnosticNotesText}"
+                             IsVisible="{Binding HasDiagnosticNotes}"
+                             FontSize="11.5"
+                             Foreground="{DynamicResource TextMutedBrush}"
+                             TextWrapping="Wrap" />
                   <TextBlock Text="{Binding WarningsText}"
                              IsVisible="{Binding HasWarnings}"
                              FontSize="12"

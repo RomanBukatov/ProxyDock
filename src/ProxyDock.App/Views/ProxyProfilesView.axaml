@@ -108,7 +108,8 @@
                           VerticalAlignment="Center"
                           ToolTip.Tip="{Binding Loc[BtnMoreActionsTooltip]}">
                     <Button.Flyout>
-                      <MenuFlyout>
+                      <MenuFlyout Placement="BottomEdgeAlignedRight"
+                                  PlacementConstraintAdjustment="FlipX, FlipY, SlideX, SlideY">
                         <MenuItem Header="{Binding Loc[BtnSetDefault]}"
                                   IsVisible="{Binding !IsDefault}"
                                   Command="{Binding SetDefaultCommand}" />

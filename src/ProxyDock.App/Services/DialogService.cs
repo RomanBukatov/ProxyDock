@@ -14,18 +14,24 @@ public sealed class DialogService : IDialogService
     private readonly IProxyProfileService _proxyService;
     private readonly IProxyConnectivityTester _proxyTester;
     private readonly IExecutableDiscoveryService _discovery;
+    private readonly IProcessTracker _processTracker;
+    private readonly ILaunchHistoryRepository _historyRepo;
     private Window? _owner;
 
     public DialogService(
         ILocalizationService loc,
         IProxyProfileService proxyService,
         IProxyConnectivityTester proxyTester,
-        IExecutableDiscoveryService discovery)
+        IExecutableDiscoveryService discovery,
+        IProcessTracker processTracker,
+        ILaunchHistoryRepository historyRepo)
     {
         _loc = loc;
         _proxyService = proxyService;
         _proxyTester = proxyTester;
         _discovery = discovery;
+        _processTracker = processTracker;
+        _historyRepo = historyRepo;
     }
 
     public void AttachOwner(Window owner) => _owner = owner;
@@ -77,6 +83,37 @@ public sealed class DialogService : IDialogService
         }
 
         return await _proxyService.SaveAsync(vm.SavedProfile, vm.EnteredNewPassword, vm.ShouldClearPassword);
+    }
+
+    public async Task ShowApplicationDiagnosticsAsync(ApplicationProfile profile, Func<Task>? onEditRequested = null)
+    {
+        if (_owner is null)
+        {
+            return;
+        }
+
+        var dialog = new AppDiagnosticsDialog();
+        var vm = new AppDiagnosticsViewModel(
+            profile,
+            _loc,
+            _discovery,
+            _processTracker,
+            _historyRepo,
+            _proxyService,
+            copyToClipboardAsync: async text =>
+            {
+                var clipboard = TopLevel.GetTopLevel(dialog)?.Clipboard;
+                if (clipboard is not null)
+                {
+                    await clipboard.SetTextAsync(text);
+                }
+            },
+            editCallback: onEditRequested);
+
+        dialog.DataContext = vm;
+        vm.CloseAction = () => dialog.Close();
+        await vm.RefreshAsync();
+        await dialog.ShowDialog(_owner);
     }
 
     public async Task<bool> ShowConfirmationAsync(

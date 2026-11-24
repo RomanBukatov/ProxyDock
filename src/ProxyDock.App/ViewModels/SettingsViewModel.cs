@@ -50,6 +50,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _logLevelIndex = 2; // Information
 
+    [ObservableProperty]
+    private bool _confirmBeforeRelaunchingRunningApp;
+
     public SettingsViewModel(
         ILocalizationService loc,
         ISettingsService settingsService,
@@ -121,6 +124,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 "Error" => 4,
                 _ => 2
             };
+            ConfirmBeforeRelaunchingRunningApp = settings.ConfirmBeforeRelaunchingRunningApp;
         }
         finally
         {
@@ -163,6 +167,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnStartMinimizedChanged(bool value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
     partial void OnDefaultTerminalIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
     partial void OnLogLevelIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
+    partial void OnConfirmBeforeRelaunchingRunningAppChanged(bool value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
 
     partial void OnRunAtWindowsStartupChanged(bool value)
     {
@@ -284,6 +289,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             4 => "Error",
             _ => "Information"
         };
+        settings.ConfirmBeforeRelaunchingRunningApp = ConfirmBeforeRelaunchingRunningApp;
 
         _loggerProvider.SetMinimumLevel(settings.MinimumLogLevel);
         await _settingsService.SaveAsync(settings);

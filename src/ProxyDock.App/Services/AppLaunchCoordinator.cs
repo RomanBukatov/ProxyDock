@@ -15,19 +15,22 @@ public sealed class AppLaunchCoordinator
     private readonly IExecutableDiscoveryService _discovery;
     private readonly IDialogService _dialogs;
     private readonly AppNotificationService _notifications;
+    private readonly ILocalizationService _loc;
 
     public AppLaunchCoordinator(
         IApplicationLauncher launcher,
         IApplicationProfileService appService,
         IExecutableDiscoveryService discovery,
         IDialogService dialogs,
-        AppNotificationService notifications)
+        AppNotificationService notifications,
+        ILocalizationService loc)
     {
         _launcher = launcher;
         _appService = appService;
         _discovery = discovery;
         _dialogs = dialogs;
         _notifications = notifications;
+        _loc = loc;
     }
 
     public async Task<LaunchResult> LaunchWithPromptsAsync(ApplicationProfile profile, bool forceDirectNoProxy = false)
@@ -74,25 +77,61 @@ public sealed class AppLaunchCoordinator
 
     public void PublishLaunchNotification(ApplicationProfile profile, LaunchResult result)
     {
-        switch (result.Status)
+        if (result.Status == LaunchStatus.Failed)
         {
-            case LaunchStatus.Started:
-                _notifications.Show($"Запущено: {profile.Name}", result.Message, NotificationSeverity.Success);
-                break;
-            case LaunchStatus.StartedWithWarning:
-                var firstWarning = result.Warnings.FirstOrDefault() ?? result.ApplicabilityNote ?? string.Empty;
-                _notifications.Show(
-                    $"Запущено с примечанием: {profile.Name}",
-                    $"{result.Message}\n{firstWarning}",
-                    NotificationSeverity.Warning);
-                break;
-            case LaunchStatus.Failed:
-                var detail = string.IsNullOrWhiteSpace(result.SuggestedAction)
-                    ? result.Message
-                    : $"{result.Message} {result.SuggestedAction}";
-                _notifications.Show($"Ошибка запуска: {profile.Name}", detail, NotificationSeverity.Error);
-                break;
+            var detail = string.IsNullOrWhiteSpace(result.SuggestedAction)
+                ? result.Message
+                : $"{result.Message} {result.SuggestedAction}";
+            _notifications.Show(
+                _loc.Format("ToastLaunchErrorTitle", profile.Name),
+                detail,
+                NotificationSeverity.Error,
+                autoDismiss: false,
+                showOpenHistoryAction: true,
+                relatedApplicationId: profile.Id);
+            return;
         }
+
+        if (result.Status is not (LaunchStatus.Started or LaunchStatus.StartedWithWarning))
+        {
+            return;
+        }
+
+        var launchedTitle = _loc.Format("ToastAppLaunchedTitle", profile.Name);
+        var proxySubtitle = result.Strategy == LaunchRoutingStrategy.DirectNoProxy
+            ? _loc["ProxyModeDirect"]
+            : result.ProxyName ?? _loc["ProxyModeDefault"];
+
+        if (result.AlreadyRunningMainInstanceDetected && result.Strategy != LaunchRoutingStrategy.DirectNoProxy)
+        {
+            _notifications.Show(
+                launchedTitle,
+                _loc["ToastAlreadyRunningProxyWarning"],
+                NotificationSeverity.Warning,
+                autoDismiss: true,
+                relatedApplicationId: profile.Id);
+            return;
+        }
+
+        var actionableWarning = result.Warnings.FirstOrDefault();
+        if (result.Status == LaunchStatus.StartedWithWarning && !string.IsNullOrWhiteSpace(actionableWarning))
+        {
+            _notifications.Show(
+                launchedTitle,
+                actionableWarning,
+                NotificationSeverity.Warning,
+                autoDismiss: true,
+                showOpenHistoryAction: true,
+                relatedApplicationId: profile.Id);
+            return;
+        }
+
+        _notifications.Show(
+            launchedTitle,
+            proxySubtitle,
+            NotificationSeverity.Success,
+            autoDismiss: true,
+            relatedApplicationId: profile.Id);
     }
 
     public async Task<ApplicationProfile?> AddFromTemplateAsync(string templateKey)

@@ -130,7 +130,8 @@ public sealed class SettingsService : ISettingsService
         DefaultTerminal = s.DefaultTerminal,
         DefaultCliWorkingDirectory = s.DefaultCliWorkingDirectory,
         MinimumLogLevel = s.MinimumLogLevel,
-        MaxHistoryEntries = s.MaxHistoryEntries
+        MaxHistoryEntries = s.MaxHistoryEntries,
+        ConfirmBeforeRelaunchingRunningApp = s.ConfirmBeforeRelaunchingRunningApp
     };
 }
 

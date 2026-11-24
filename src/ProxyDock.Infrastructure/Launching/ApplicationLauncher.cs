@@ -89,27 +89,36 @@ public sealed class ApplicationLauncher : IApplicationLauncher
                 }
             }
 
-            if (app.LaunchKind == LaunchKind.Desktop && !request.IgnoreAlreadyRunningWarning)
+            RunningAppInspection? runningInspection = null;
+            if (app.LaunchKind == LaunchKind.Desktop)
             {
                 var probe = _discovery.Resolve(app);
                 if (probe.Found && !string.IsNullOrWhiteSpace(probe.ResolvedPath))
                 {
-                    var runningPids = _processTracker.FindRunningInstances(probe.ResolvedPath, app.RelatedProcessNames);
-                    if (runningPids.Count > 0)
+                    runningInspection = _processTracker.InspectRunningInstances(
+                        probe.ResolvedPath,
+                        app.RelatedProcessNames,
+                        app.TemplateKey);
+
+                    if (runningInspection.HasActiveMainInstance
+                        && settings.ConfirmBeforeRelaunchingRunningApp
+                        && !request.IgnoreAlreadyRunningWarning)
                     {
-                        var pidText = string.Join(", ", runningPids);
+                        var pidText = string.Join(", ", runningInspection.ActiveMainProcessIds);
                         _logger.LogInformation(
-                            "Запуск «{AppName}» приостановлен: обнаружены уже работающие процессы (PID: {Pids}).",
+                            "Запуск «{AppName}» приостановлен по настройке подтверждения: {Summary}",
                             app.Name,
-                            pidText);
+                            runningInspection.BuildDiagnosticSummary());
 
                         return new LaunchResult
                         {
                             Status = LaunchStatus.Cancelled,
                             RequiresExistingProcessConfirmation = true,
-                            AlreadyRunningProcessIds = runningPids.ToList(),
-                            Message = $"Приложение «{app.Name}» уже запущено (PID: {pidText}). При повторном запуске управление часто передаётся существующему окну или процессу в трее, из-за чего новое прокси-окружение не применится.",
-                            SuggestedAction = "Полностью закройте приложение (включая значок в системном трее) и повторите запуск через ProxyDock."
+                            AlreadyRunningMainInstanceDetected = true,
+                            AlreadyRunningProcessIds = runningInspection.ActiveMainProcessIds.ToList(),
+                            RunningInstanceInspection = runningInspection,
+                            Message = $"Приложение «{app.Name}» уже работает (PID: {pidText}). При повторном запуске управление часто передаётся существующему окну или процессу в трее, из-за чего новые настройки прокси могут не примениться.",
+                            SuggestedAction = "Вы можете закрыть приложение полностью и повторить запуск, либо запустить всё равно."
                         };
                     }
                 }
@@ -138,7 +147,7 @@ public sealed class ApplicationLauncher : IApplicationLauncher
                 isDirectNoProxy,
                 cancellationToken).ConfigureAwait(false);
 
-            return await ExecutePlanAsync(app, effectiveProxy, plan, settings, cancellationToken).ConfigureAwait(false);
+            return await ExecutePlanAsync(app, effectiveProxy, plan, settings, runningInspection, cancellationToken).ConfigureAwait(false);
         }
         catch (LaunchPreparationException ex)
         {
@@ -171,6 +180,7 @@ public sealed class ApplicationLauncher : IApplicationLauncher
         ProxyProfile? proxy,
         LaunchPlan plan,
         AppSettings settings,
+        RunningAppInspection? runningInspection,
         CancellationToken cancellationToken)
     {
         var psi = new ProcessStartInfo
@@ -256,7 +266,21 @@ public sealed class ApplicationLauncher : IApplicationLauncher
         var now = DateTimeOffset.UtcNow;
         await _appService.MarkLaunchedAsync(app.Id, now, cancellationToken).ConfigureAwait(false);
 
-        var status = plan.Warnings.Count > 0 ? LaunchStatus.StartedWithWarning : LaunchStatus.Started;
+        var effectiveWarnings = new List<string>(plan.Warnings);
+        var hasActiveMainInstance = runningInspection?.HasActiveMainInstance == true;
+        var activeMainPids = runningInspection?.ActiveMainProcessIds.ToList() ?? [];
+        var processSummary = runningInspection?.BuildDiagnosticSummary();
+
+        if (hasActiveMainInstance && plan.Strategy != LaunchRoutingStrategy.DirectNoProxy)
+        {
+            const string alreadyRunningWarning = "Приложение уже работает. Новые настройки прокси могут не примениться до полного перезапуска.";
+            if (!effectiveWarnings.Contains(alreadyRunningWarning, StringComparer.Ordinal))
+            {
+                effectiveWarnings.Insert(0, alreadyRunningWarning);
+            }
+        }
+
+        var status = effectiveWarnings.Count > 0 ? LaunchStatus.StartedWithWarning : LaunchStatus.Started;
         var summaryMessage = plan.Strategy == LaunchRoutingStrategy.DirectNoProxy
             ? $"Процесс «{app.Name}» запущен без прокси (PID: {pid})."
             : $"Процесс «{app.Name}» запущен с профилем прокси «{proxy?.Name}» ({plan.ProxyDisplayAddress}, PID: {pid}). Учтите: успешный старт процесса не гарантирует, что сетевой стек программы соблюдает параметры прокси.";
@@ -279,29 +303,37 @@ public sealed class ApplicationLauncher : IApplicationLauncher
             ApplicabilityLevel = plan.ApplicabilityLevel,
             ApplicabilityNote = plan.ApplicabilityNote,
             Message = summaryMessage,
-            Warnings = [.. plan.Warnings]
+            Warnings = [.. effectiveWarnings],
+            DiagnosticNotes = [.. plan.DiagnosticNotes],
+            ProcessDetectionSummary = processSummary
         };
 
         await _historyRepository.AppendAsync(historyEntry, settings.MaxHistoryEntries, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Запуск {AppName} ({Kind}, стратегия={Strategy}, прокси={ProxyAddr}, PID={Pid}, аргументы={Args}).",
+            "Запуск {AppName} ({Kind}, стратегия={Strategy}, прокси={ProxyAddr}, PID={Pid}, аргументы={Args}, процессы={ProcessSummary}).",
             app.Name,
             app.LaunchKind,
             plan.Strategy,
             plan.ProxyDisplayAddress ?? "direct",
             pid,
-            redactedArgs);
+            redactedArgs,
+            processSummary ?? "n/a");
 
         return new LaunchResult
         {
             Status = status,
             ProcessId = pid,
             Strategy = plan.Strategy,
+            ProxyName = plan.Strategy == LaunchRoutingStrategy.DirectNoProxy ? null : proxy?.Name,
             Message = summaryMessage,
             ApplicabilityLevel = plan.ApplicabilityLevel,
             ApplicabilityNote = plan.ApplicabilityNote,
-            Warnings = plan.Warnings,
+            Warnings = effectiveWarnings,
+            DiagnosticNotes = [.. plan.DiagnosticNotes],
+            AlreadyRunningMainInstanceDetected = hasActiveMainInstance,
+            AlreadyRunningProcessIds = activeMainPids,
+            RunningInstanceInspection = runningInspection,
             HistoryEntry = historyEntry
         };
     }

@@ -121,14 +121,12 @@
                   </Border>
 
                   <Button Grid.Column="2"
+                          Name="AppMoreMenuButton"
                           Content="⋯"
                           Classes="icon-btn"
                           VerticalAlignment="Top"
-                          ToolTip.Tip="{Binding Loc[BtnMoreActionsTooltip]}">
-                    <Button.Flyout>
-                      <MenuFlyout Opening="OnAppRowMenuOpening" />
-                    </Button.Flyout>
-                  </Button>
+                          Click="OnAppMenuButtonClick"
+                          ToolTip.Tip="{Binding Loc[BtnMoreActionsTooltip]}" />
                 </Grid>
 
                 <!-- Центр: полное название приложения без обрезания + название прокси -->
@@ -154,20 +152,38 @@
                   </StackPanel>
                 </StackPanel>
 
-                <!-- Низ: крупная кнопка запуска -->
-                <Button Grid.Row="2"
-                        Classes="launch-btn"
-                        HorizontalAlignment="Stretch"
-                        Command="{Binding LaunchCommand}">
-                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                    <Path Data="M 1,0.5 L 9.5,5.5 L 1,10.5 Z"
-                          Fill="{DynamicResource AccentTextOnFillBrush}"
-                          Width="10"
-                          Height="11"
-                          VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding Loc[BtnLaunch]}" VerticalAlignment="Center" />
-                  </StackPanel>
-                </Button>
+                <!-- Низ: крупная кнопка запуска (или отключённая + кнопка исправления пути) -->
+                <Panel Grid.Row="2">
+                  <Button Classes="launch-btn"
+                          HorizontalAlignment="Stretch"
+                          IsVisible="{Binding TargetFound}"
+                          Command="{Binding LaunchCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                      <Path Data="M 1,0.5 L 9.5,5.5 L 1,10.5 Z"
+                            Fill="{DynamicResource AccentTextOnFillBrush}"
+                            Width="10"
+                            Height="11"
+                            VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Loc[BtnLaunch]}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+
+                  <Grid ColumnDefinitions="*,Auto"
+                        ColumnSpacing="8"
+                        IsVisible="{Binding !TargetFound}">
+                    <Button Classes="launch-btn"
+                            HorizontalAlignment="Stretch"
+                            Command="{Binding LaunchCommand}">
+                      <TextBlock Text="{Binding Loc[BtnLaunch]}" VerticalAlignment="Center" />
+                    </Button>
+                    <Button Grid.Column="1"
+                            Content="{Binding Loc[BtnFixPath]}"
+                            Classes="secondary"
+                            Height="36"
+                            Padding="12,0"
+                            Command="{Binding EditCommand}" />
+                  </Grid>
+                </Panel>
               </Grid>
             </Border>
           </DataTemplate>
@@ -176,7 +192,8 @@
           <DataTemplate x:DataType="vm:AddAppCardTileViewModel">
             <Button Classes="add-app-card">
               <Button.Flyout>
-                <MenuFlyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft"
+                            PlacementConstraintAdjustment="FlipX, FlipY, SlideX, SlideY">
                   <MenuItem Header="{Binding Loc[MenuAddDesktop]}" Command="{Binding Parent.AddDesktopApplicationCommand}" />
                   <MenuItem Header="{Binding Loc[MenuAddCli]}" Command="{Binding Parent.AddCliApplicationCommand}" />
                   <Separator />

@@ -79,6 +79,7 @@ public sealed partial class AppCardViewModel : ObservableObject
     private readonly Func<AppCardViewModel, Task> _editAction;
     private readonly Func<AppCardViewModel, Task> _duplicateAction;
     private readonly Func<AppCardViewModel, Task> _deleteAction;
+    private readonly Func<AppCardViewModel, Task> _diagnosticsAction;
     private readonly Action<AppCardViewModel> _openFolderAction;
 
     public AppCardViewModel(
@@ -97,6 +98,7 @@ public sealed partial class AppCardViewModel : ObservableObject
         Func<AppCardViewModel, Task> editAction,
         Func<AppCardViewModel, Task> duplicateAction,
         Func<AppCardViewModel, Task> deleteAction,
+        Func<AppCardViewModel, Task> diagnosticsAction,
         Action<AppCardViewModel> openFolderAction)
     {
         Profile = profile;
@@ -114,6 +116,7 @@ public sealed partial class AppCardViewModel : ObservableObject
         _editAction = editAction;
         _duplicateAction = duplicateAction;
         _deleteAction = deleteAction;
+        _diagnosticsAction = diagnosticsAction;
         _openFolderAction = openFolderAction;
     }
 
@@ -135,6 +138,7 @@ public sealed partial class AppCardViewModel : ObservableObject
     public bool HasDesktopIcon => IsDesktop && Icon is not null;
     public bool HasDesktopFallbackIcon => IsDesktop && Icon is null;
     public string TargetDisplay => string.IsNullOrWhiteSpace(ResolvedPath) ? Profile.ExecutableOrCommand : ResolvedPath;
+    public bool CanLaunch => TargetFound;
     public bool ShowMissingWarning => !TargetFound;
     public bool ShowProxyDot => TargetFound;
     public string SubtitleText => TargetFound ? AssignedProxyLabel : Loc["TargetMissingShort"];
@@ -146,10 +150,13 @@ public sealed partial class AppCardViewModel : ObservableObject
     public Task AssignProxyAsync(ProxyAssignmentMode mode, Guid? proxyId)
         => _assignProxyAction(this, mode, proxyId);
 
-    [RelayCommand]
+    public IAsyncRelayCommand CreateAssignProxyCommand(ProxyAssignmentMode mode, Guid? proxyId)
+        => new AsyncRelayCommand(() => AssignProxyAsync(mode, proxyId));
+
+    [RelayCommand(CanExecute = nameof(CanLaunch))]
     private Task LaunchAsync() => _launchAction(this, false);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanLaunch))]
     private Task LaunchDirectAsync() => _launchAction(this, true);
 
     [RelayCommand]
@@ -157,6 +164,9 @@ public sealed partial class AppCardViewModel : ObservableObject
 
     [RelayCommand]
     private Task DuplicateAsync() => _duplicateAction(this);
+
+    [RelayCommand]
+    private Task DiagnosticsAsync() => _diagnosticsAction(this);
 
     [RelayCommand]
     private Task DeleteAsync() => _deleteAction(this);
@@ -346,6 +356,10 @@ public sealed class HistoryItemViewModel
     public string ApplicabilityBadge => FormatHelpers.GetApplicabilityLabel(Entry.ApplicabilityLevel);
     public bool HasWarnings => Entry.Warnings.Count > 0;
     public string WarningsText => string.Join(" | ", Entry.Warnings);
+    public bool HasProcessDetectionSummary => !string.IsNullOrWhiteSpace(Entry.ProcessDetectionSummary);
+    public string ProcessDetectionSummary => Entry.ProcessDetectionSummary ?? string.Empty;
+    public bool HasDiagnosticNotes => Entry.DiagnosticNotes.Count > 0;
+    public string DiagnosticNotesText => string.Join(" | ", Entry.DiagnosticNotes);
 }
 
 public sealed partial class EnvVarRowViewModel : ObservableObject

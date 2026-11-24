@@ -152,6 +152,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
                 EditAppAsync,
                 DuplicateAppAsync,
                 DeleteAppAsync,
+                ShowDiagnosticsAsync,
                 OpenFolder));
         }
 
@@ -398,23 +399,40 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         _notifications.Show("Профиль продублирован", $"Создана копия «{copy.Name}».", NotificationSeverity.Info);
     }
 
+    private Task ShowDiagnosticsAsync(AppCardViewModel card)
+        => _dialogs.ShowApplicationDiagnosticsAsync(card.Profile, () => EditAppAsync(card));
+
     private async Task DeleteAppAsync(AppCardViewModel card)
     {
         var ok = await _dialogs.ShowConfirmationAsync(
-            "Удалить приложение",
-            $"Вы уверены, что хотите удалить профиль «{card.Name}»?",
-            "Удалить",
-            "Отмена",
+            Loc["DeleteProfileConfirmTitle"],
+            Loc.Format("DeleteProfileConfirmBody", card.Name),
+            Loc["BtnDelete"],
+            Loc["BtnCancel"],
             isDanger: true);
         if (ok)
         {
             await _appService.DeleteAsync(card.Profile.Id);
-            _notifications.Show("Профиль удалён", $"Профиль «{card.Name}» удалён.", NotificationSeverity.Info);
+            _notifications.Show(
+                Loc["ToastProfileDeletedTitle"],
+                Loc.Format("ToastProfileDeletedBody", card.Name),
+                NotificationSeverity.Info);
         }
     }
 
     private void OpenFolder(AppCardViewModel card)
     {
+        if (!string.IsNullOrWhiteSpace(card.ResolvedPath) && File.Exists(card.ResolvedPath))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{card.ResolvedPath}\"",
+                UseShellExecute = true
+            });
+            return;
+        }
+
         var folder = card.Profile.WorkingDirectory;
         if (string.IsNullOrWhiteSpace(folder) && !string.IsNullOrWhiteSpace(card.ResolvedPath))
         {
@@ -431,7 +449,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         }
         else
         {
-            _notifications.Show("Папка не найдена", "Не удалось определить существующую папку для открытия.", NotificationSeverity.Warning);
+            _notifications.Show("Расположение не найдено", "Не удалось определить существующий файл или папку для открытия.", NotificationSeverity.Warning);
         }
     }
 
