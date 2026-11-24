@@ -131,7 +131,15 @@ public sealed class SettingsService : ISettingsService
         DefaultCliWorkingDirectory = s.DefaultCliWorkingDirectory,
         MinimumLogLevel = s.MinimumLogLevel,
         MaxHistoryEntries = s.MaxHistoryEntries,
-        ConfirmBeforeRelaunchingRunningApp = s.ConfirmBeforeRelaunchingRunningApp
+        ConfirmBeforeRelaunchingRunningApp = s.ConfirmBeforeRelaunchingRunningApp,
+        AutoCheckUpdates = s.AutoCheckUpdates,
+        UpdateChannel = s.UpdateChannel,
+        UpdateNetworkMode = s.UpdateNetworkMode,
+        UpdateProxyProfileId = s.UpdateProxyProfileId,
+        LastUpdateCheckAtUtc = s.LastUpdateCheckAtUtc,
+        LastUpdateCheckStatus = s.LastUpdateCheckStatus,
+        LastUpdateCheckSummary = s.LastUpdateCheckSummary,
+        LastAvailableUpdateVersion = s.LastAvailableUpdateVersion
     };
 }
 

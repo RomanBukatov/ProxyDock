@@ -111,6 +111,102 @@
         </Border>
       </StackPanel>
 
+      <!-- Обновления -->
+      <StackPanel Spacing="6">
+        <TextBlock Text="{Binding Loc[UpdatesTitle]}" Classes="section-title" />
+        <Border Classes="surface-list">
+          <StackPanel>
+            <Border Classes="list-row">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Loc[UpdatesCurrentVersion]}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding CurrentAppVersionDisplay}"
+                               Classes="mono"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding InstallModeDisplay}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                  </StackPanel>
+                  <TextBlock Text="{Binding LastUpdateCheckDisplay}"
+                             Classes="caption"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="{Binding AvailableUpdateButtonText}"
+                        Classes="primary"
+                        Height="32"
+                        Padding="12,0"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding HasAvailableUpdate}"
+                        Command="{Binding OpenAvailableUpdateCommand}" />
+
+                <Button Grid.Column="2"
+                        Content="{Binding CheckUpdatesButtonText}"
+                        Classes="secondary"
+                        Height="32"
+                        Padding="12,0"
+                        VerticalAlignment="Center"
+                        Command="{Binding CheckUpdatesOrCancelCommand}" />
+              </Grid>
+            </Border>
+
+            <Border Classes="list-row">
+              <CheckBox Content="{Binding Loc[UpdatesAutoCheck]}"
+                        IsChecked="{Binding AutoCheckUpdates}" />
+            </Border>
+
+            <Border Classes="list-row">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock Text="{Binding Loc[UpdatesChannelLabel]}" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" SelectedIndex="{Binding UpdateChannelIndex}" MinWidth="175">
+                  <ComboBoxItem Content="Stable" />
+                </ComboBox>
+              </Grid>
+            </Border>
+
+            <Border Classes="list-row">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <TextBlock Text="{Binding Loc[UpdatesNetworkMode]}" VerticalAlignment="Center" />
+                  <ComboBox Grid.Column="1" SelectedIndex="{Binding UpdateNetworkModeIndex}" MinWidth="220">
+                    <ComboBoxItem Content="{Binding Loc[UpdatesNetSystemDefault]}" />
+                    <ComboBoxItem Content="{Binding Loc[UpdatesNetDirect]}" />
+                    <ComboBoxItem Content="{Binding Loc[UpdatesNetSelectedProxy]}" />
+                  </ComboBox>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" IsVisible="{Binding ShowUpdateProxyPicker}">
+                  <TextBlock Text="{Binding Loc[UpdatesProxyProfile]}" Classes="caption" VerticalAlignment="Center" />
+                  <ComboBox Grid.Column="1"
+                            ItemsSource="{Binding Proxies}"
+                            SelectedItem="{Binding SelectedUpdateProxy}"
+                            MinWidth="220"
+                            MaxWidth="280">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="models:ProxyProfile">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="list-row" BorderThickness="0">
+              <WrapPanel ItemSpacing="8" LineSpacing="8">
+                <Button Content="{Binding Loc[UpdatesLinkReleases]}" Classes="secondary" Command="{Binding OpenReleasesPageCommand}" />
+                <Button Content="{Binding Loc[UpdatesLinkSource]}" Classes="secondary" Command="{Binding OpenSourceCodePageCommand}" />
+              </WrapPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
       <!-- Диагностика и перенос -->
       <StackPanel Spacing="6">
         <TextBlock Text="{Binding Loc[SettingsLogging]}" Classes="section-title" />

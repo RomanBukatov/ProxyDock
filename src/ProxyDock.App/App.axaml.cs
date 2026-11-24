@@ -9,6 +9,7 @@ using ProxyDock.App.Services;
 using ProxyDock.App.ViewModels;
 using ProxyDock.App.Views;
 using ProxyDock.Core.Interfaces;
+using ProxyDock.Core.Models;
 using ProxyDock.Infrastructure;
 using ProxyDock.Infrastructure.Logging;
 
@@ -38,9 +39,24 @@ public partial class App : Application
             var verifyStartup = args.Any(a => a.Equals("--verify-startup", StringComparison.OrdinalIgnoreCase));
             var startMinimizedArg = args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
             var customDataDir = Program.TryParseDataDirArgument(args);
+            var testUpdateSource = Program.TryParseTestUpdateSourceArgument(args);
+            var isUpdateAutoCheckSuppressed = verifyStartup
+                || (customDataDir is not null && string.IsNullOrWhiteSpace(testUpdateSource))
+                || string.Equals(Environment.GetEnvironmentVariable("PROXYDOCK_DISABLE_UPDATES"), "1", StringComparison.Ordinal);
+
+            var restartArgs = customDataDir is not null
+                ? new[] { "--data-dir", customDataDir }
+                : Array.Empty<string>();
+
+            var updateOptions = new UpdateRuntimeOptions
+            {
+                IsAutoCheckSuppressed = isUpdateAutoCheckSuppressed,
+                TestUpdateSourcePath = testUpdateSource,
+                RestartArguments = restartArgs
+            };
 
             var services = new ServiceCollection();
-            ConfigureServices(services, customDataDir);
+            ConfigureServices(services, customDataDir, updateOptions);
             _serviceProvider = services.BuildServiceProvider();
 
             var settingsService = _serviceProvider.GetRequiredService<ISettingsService>();
@@ -62,7 +78,7 @@ public partial class App : Application
             };
 
             var dialogService = _serviceProvider.GetRequiredService<DialogService>();
-            dialogService.AttachOwner(_mainWindow);
+            dialogService.AttachOwner(_mainWindow, () => ShutdownCompletely(desktop));
 
             _trayService = _serviceProvider.GetRequiredService<TrayIconService>();
             var coordinator = _serviceProvider.GetRequiredService<AppLaunchCoordinator>();
@@ -129,14 +145,22 @@ public partial class App : Application
 
                 _mainWindow.Show();
             }
+
+            if (!updateOptions.IsAutoCheckSuppressed)
+            {
+                _ = mainVm.RunStartupUpdateCheckAsync(_appLifetimeCts.Token);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
-    private static void ConfigureServices(IServiceCollection services, string? customDataRoot)
+    private static void ConfigureServices(
+        IServiceCollection services,
+        string? customDataRoot,
+        UpdateRuntimeOptions? updateOptions = null)
     {
-        services.AddProxyDockInfrastructure(customDataRoot);
+        services.AddProxyDockInfrastructure(customDataRoot, updateOptions);
 
         services.AddSingleton<ILocalizationService, LocalizationService>();
         services.AddSingleton<ThemeService>();

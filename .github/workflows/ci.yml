@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build, Test & Verify win-x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore NuGet packages
+        run: dotnet restore ProxyDock.slnx
+
+      - name: Build Release
+        run: dotnet build ProxyDock.slnx -c Release --no-restore
+
+      - name: Run automated tests
+        env:
+          PROXYDOCK_DISABLE_UPDATES: '1'
+        run: |
+          dotnet test tests/ProxyDock.Tests/ProxyDock.Tests.csproj `
+            -c Release `
+            --no-build `
+            --filter "Category!=LocalLive" `
+            --logger "trx;LogFileName=test-results.trx" `
+            --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-win-x64
+          path: TestResults/*.trx
+          if-no-files-found: warn
+
+      - name: Publish verification build (win-x64)
+        run: |
+          dotnet restore src/ProxyDock.App/ProxyDock.App.csproj -r win-x64
+          dotnet publish src/ProxyDock.App/ProxyDock.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -o publish/ci-win-x64
+
+      - name: Smoke-test startup verification
+        shell: pwsh
+        run: |
+          $smokeDir = Join-Path $env:RUNNER_TEMP "proxydock-ci-smoke"
+          & "publish/ci-win-x64/ProxyDock.exe" --verify-startup --data-dir $smokeDir
+          if ($LASTEXITCODE -ne 0) {
+            throw "Smoke startup exited with code $LASTEXITCODE"
+          }

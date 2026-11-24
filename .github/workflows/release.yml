@@ -1,0 +1,217 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release Git tag (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Test, Pack Velopack & Publish GitHub Release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate release tag and version
+        id: meta
+        shell: pwsh
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $rawTag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_TAG } else { $env:GITHUB_REF_NAME }
+          if ([string]::IsNullOrWhiteSpace($rawTag)) {
+            throw "Release tag is empty."
+          }
+          $rawTag = $rawTag.Trim()
+          if ($rawTag -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$') {
+            throw "Tag '$rawTag' does not match required SemVer tag format vX.Y.Z or vX.Y.Z-prerelease."
+          }
+          $version = $Matches[1]
+          $isPrerelease = if ($version.Contains('-')) { 'true' } else { 'false' }
+
+          # Prevent accidental overwrite of an already published non-draft release
+          $null = gh release view $rawTag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            throw "GitHub Release for tag '$rawTag' already exists. Refusing to overwrite an existing release."
+          }
+          $global:LASTEXITCODE = 0
+
+          "TAG=$rawTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "IS_PRERELEASE=$isPrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.TAG }}
+          fetch-depth: 0
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution and win-x64 runtime
+        run: |
+          dotnet restore ProxyDock.slnx
+          dotnet restore src/ProxyDock.App/ProxyDock.App.csproj -r win-x64
+
+      - name: Build Release with tag version
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
+        run: dotnet build ProxyDock.slnx -c Release --no-restore -p:ProxyDockVersion=$env:RELEASE_VERSION
+
+      - name: Run mandatory automated tests
+        env:
+          PROXYDOCK_DISABLE_UPDATES: '1'
+        run: |
+          dotnet test tests/ProxyDock.Tests/ProxyDock.Tests.csproj `
+            -c Release `
+            --no-build `
+            --filter "Category!=LocalLive" `
+            --logger "trx;LogFileName=release-test-results.trx" `
+            --results-directory TestResults
+
+      - name: Publish Velopack payload (win-x64)
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
+        run: |
+          dotnet publish src/ProxyDock.App/ProxyDock.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -p:ProxyDockVersion=$env:RELEASE_VERSION `
+            -o artifacts/publish-velopack
+
+      - name: Publish standalone single-file EXE (win-x64)
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
+        run: |
+          dotnet publish src/ProxyDock.App/ProxyDock.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            --no-restore `
+            -p:ProxyDockVersion=$env:RELEASE_VERSION `
+            -o artifacts/publish-standalone
+
+      - name: Restore pinned Velopack CLI (vpk)
+        run: dotnet tool restore
+
+      - name: Download previous release feed for delta packages (if available)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Path artifacts/release -Force | Out-Null
+          dotnet vpk download github `
+            --repoUrl "https://github.com/$env:GITHUB_REPOSITORY" `
+            --token $env:GH_TOKEN `
+            --outputDir artifacts/release `
+            --channel win 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "No previous Velopack release feed found; building full package only."
+            $global:LASTEXITCODE = 0
+          }
+
+      - name: Pack Velopack installer, portable zip & update feed
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
+          RELEASE_TAG: ${{ steps.meta.outputs.TAG }}
+        run: |
+          $notesFile = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          "ProxyDock $env:RELEASE_TAG" | Set-Content $notesFile -Encoding utf8
+
+          dotnet vpk pack `
+            --packId ProxyDockApp `
+            --packTitle "ProxyDock" `
+            --packVersion $env:RELEASE_VERSION `
+            --packDir artifacts/publish-velopack `
+            --mainExe ProxyDock.exe `
+            --runtime win-x64 `
+            --icon src/ProxyDock.App/Assets/proxydock.ico `
+            --releaseNotes $notesFile `
+            --channel win `
+            --outputDir artifacts/release
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "vpk pack failed with exit code $LASTEXITCODE"
+          }
+
+          Copy-Item `
+            "artifacts/publish-standalone/ProxyDock.exe" `
+            "artifacts/release/ProxyDock-$env:RELEASE_TAG-win-x64-standalone.exe" `
+            -Force
+
+      - name: Generate SHA256SUMS.txt
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
+          RELEASE_TAG: ${{ steps.meta.outputs.TAG }}
+        run: |
+          $files = Get-ChildItem "artifacts/release" -File |
+            Where-Object {
+              $_.Name -ne 'SHA256SUMS.txt' -and (
+                $_.Name -like "*-$env:RELEASE_VERSION-*.nupkg" -or
+                $_.Name -in 'ProxyDockApp-win-Setup.exe', 'ProxyDockApp-win-Portable.zip', 'releases.win.json', 'RELEASES', "ProxyDock-$env:RELEASE_TAG-win-x64-standalone.exe"
+              )
+            } |
+            Sort-Object Name
+          $lines = foreach ($f in $files) {
+            $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($f.Name)"
+          }
+          $lines | Set-Content "artifacts/release/SHA256SUMS.txt" -Encoding utf8
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.TAG }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
+          IS_PRERELEASE: ${{ steps.meta.outputs.IS_PRERELEASE }}
+        run: |
+          $assets = Get-ChildItem "artifacts/release" -File |
+            Where-Object {
+              $_.Name -like "*-$env:RELEASE_VERSION-*.nupkg" -or
+              $_.Name -in 'ProxyDockApp-win-Setup.exe', 'ProxyDockApp-win-Portable.zip', 'releases.win.json', 'RELEASES', "ProxyDock-$env:RELEASE_TAG-win-x64-standalone.exe", 'SHA256SUMS.txt'
+            } |
+            ForEach-Object { $_.FullName }
+
+          $argsList = @(
+            'release', 'create', $env:RELEASE_TAG,
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--title', "ProxyDock $env:RELEASE_TAG",
+            '--generate-notes'
+          )
+          if ($env:IS_PRERELEASE -eq 'true') {
+            $argsList += '--prerelease'
+          }
+          $argsList += $assets
+
+          & gh @argsList
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release create failed with exit code $LASTEXITCODE"
+          }

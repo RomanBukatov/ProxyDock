@@ -84,6 +84,7 @@ public sealed class AppIconAndMsixResolutionTests(ITestOutputHelper output)
     }
 
     [Fact]
+    [Trait("Category", "LocalLive")]
     public void InstalledDesktopTemplates_ExtractRealHighResIconsInDarkAndLightThemes()
     {
         if (!OperatingSystem.IsWindows())

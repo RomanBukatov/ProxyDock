@@ -7,6 +7,7 @@ using ProxyDock.Core.Enums;
 using ProxyDock.Core.Interfaces;
 using ProxyDock.Core.Models;
 using ProxyDock.Infrastructure.Logging;
+using ProxyDock.Infrastructure.Updates;
 
 namespace ProxyDock.App.ViewModels;
 
@@ -17,10 +18,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly IStartupManager _startupManager;
     private readonly IPathProvider _paths;
     private readonly IConfigExportService _exportService;
+    private readonly IUpdateService _updateService;
     private readonly ThemeService _themeService;
     private readonly FileLoggerProvider _loggerProvider;
     private readonly IDialogService _dialogs;
     private readonly AppNotificationService _notifications;
+    private CancellationTokenSource? _updateCheckCts;
+    private UpdateReleaseInfo? _pendingUpdateRelease;
     private bool _isLoading;
 
     [ObservableProperty]
@@ -53,6 +57,30 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _confirmBeforeRelaunchingRunningApp;
 
+    [ObservableProperty]
+    private bool _autoCheckUpdates = true;
+
+    [ObservableProperty]
+    private int _updateChannelIndex;
+
+    [ObservableProperty]
+    private int _updateNetworkModeIndex;
+
+    [ObservableProperty]
+    private ProxyProfile? _selectedUpdateProxy;
+
+    [ObservableProperty]
+    private string _lastUpdateCheckDisplay = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCheckingUpdates;
+
+    [ObservableProperty]
+    private bool _hasAvailableUpdate;
+
+    [ObservableProperty]
+    private string _availableUpdateButtonText = string.Empty;
+
     public SettingsViewModel(
         ILocalizationService loc,
         ISettingsService settingsService,
@@ -60,6 +88,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IStartupManager startupManager,
         IPathProvider paths,
         IConfigExportService exportService,
+        IUpdateService updateService,
         ThemeService themeService,
         FileLoggerProvider loggerProvider,
         IDialogService dialogs,
@@ -71,6 +100,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _startupManager = startupManager;
         _paths = paths;
         _exportService = exportService;
+        _updateService = updateService;
         _themeService = themeService;
         _loggerProvider = loggerProvider;
         _dialogs = dialogs;
@@ -81,6 +111,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     public ObservableCollection<ProxyProfile> Proxies { get; } = [];
     public bool IsStartupSupported => _startupManager.IsSupported;
+    public string CurrentAppVersionDisplay => $"v{_updateService.CurrentVersion}";
+    public string InstallModeDisplay => _updateService.InstallMode == UpdateInstallMode.VelopackManaged
+        ? Loc["UpdateModeVelopack"]
+        : Loc["UpdateModeStandalone"];
+    public bool ShowUpdateProxyPicker => UpdateNetworkModeIndex == 2;
+    public string CheckUpdatesButtonText => IsCheckingUpdates ? Loc["BtnCancel"] : Loc["UpdatesCheckNow"];
 
     public async Task RefreshAsync()
     {
@@ -125,6 +161,18 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 _ => 2
             };
             ConfirmBeforeRelaunchingRunningApp = settings.ConfirmBeforeRelaunchingRunningApp;
+            AutoCheckUpdates = settings.AutoCheckUpdates;
+            UpdateChannelIndex = 0;
+            UpdateNetworkModeIndex = settings.UpdateNetworkMode switch
+            {
+                UpdateNetworkMode.DirectNoProxy => 1,
+                UpdateNetworkMode.SelectedProxy => 2,
+                _ => 0
+            };
+            SelectedUpdateProxy = Proxies.FirstOrDefault(p => p.Id == settings.UpdateProxyProfileId)
+                ?? SelectedDefaultProxy
+                ?? Proxies.FirstOrDefault();
+            LastUpdateCheckDisplay = FormatLastUpdateCheck(settings);
         }
         finally
         {
@@ -168,6 +216,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnDefaultTerminalIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
     partial void OnLogLevelIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
     partial void OnConfirmBeforeRelaunchingRunningAppChanged(bool value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
+    partial void OnAutoCheckUpdatesChanged(bool value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
+    partial void OnUpdateChannelIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
+    partial void OnUpdateNetworkModeIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(ShowUpdateProxyPicker));
+        if (!_isLoading) _ = SaveCurrentSettingsAsync();
+    }
+    partial void OnSelectedUpdateProxyChanged(ProxyProfile? value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
+    partial void OnIsCheckingUpdatesChanged(bool value) => OnPropertyChanged(nameof(CheckUpdatesButtonText));
 
     partial void OnRunAtWindowsStartupChanged(bool value)
     {
@@ -216,6 +273,70 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     [RelayCommand]
     private Task SaveCliDirectoryAsync() => SaveCurrentSettingsAsync();
+
+    [RelayCommand]
+    private async Task CheckUpdatesOrCancelAsync()
+    {
+        if (IsCheckingUpdates)
+        {
+            _updateCheckCts?.Cancel();
+            return;
+        }
+
+        IsCheckingUpdates = true;
+        _updateCheckCts?.Dispose();
+        _updateCheckCts = new CancellationTokenSource();
+
+        try
+        {
+            var result = await _updateService.CheckForUpdatesAsync(isManualCheck: true, _updateCheckCts.Token);
+            var settings = await _settingsService.GetAsync();
+            LastUpdateCheckDisplay = FormatLastUpdateCheck(settings);
+
+            if (result.Status == UpdateCheckStatus.UpdateAvailable && result.AvailableRelease is { } release)
+            {
+                _pendingUpdateRelease = release;
+                HasAvailableUpdate = true;
+                AvailableUpdateButtonText = Loc.Format("UpdatesOpenAvailableBtn", release.Version);
+                await _dialogs.ShowUpdateDialogAsync(release);
+            }
+            else if (result.Status == UpdateCheckStatus.UpToDate)
+            {
+                HasAvailableUpdate = false;
+                _pendingUpdateRelease = null;
+                _notifications.Show(Loc["UpdatesTitle"], result.Message, NotificationSeverity.Success);
+            }
+            else if (result.Status == UpdateCheckStatus.Failed)
+            {
+                _notifications.Show(Loc["UpdatesCheckFailedTitle"], result.Message, NotificationSeverity.Warning);
+            }
+        }
+        finally
+        {
+            IsCheckingUpdates = false;
+            _updateCheckCts?.Dispose();
+            _updateCheckCts = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenAvailableUpdateAsync()
+    {
+        if (_pendingUpdateRelease is not null)
+        {
+            await _dialogs.ShowUpdateDialogAsync(_pendingUpdateRelease);
+        }
+        else
+        {
+            await CheckUpdatesOrCancelAsync();
+        }
+    }
+
+    [RelayCommand]
+    private void OpenReleasesPage() => OpenTrustedUrl(_updateService.ReleasesPageUrl);
+
+    [RelayCommand]
+    private void OpenSourceCodePage() => OpenTrustedUrl(_updateService.RepositoryUrl);
 
     [RelayCommand]
     private void OpenLogsFolder() => OpenFolder(_paths.LogsDirectory);
@@ -290,9 +411,42 @@ public sealed partial class SettingsViewModel : ViewModelBase
             _ => "Information"
         };
         settings.ConfirmBeforeRelaunchingRunningApp = ConfirmBeforeRelaunchingRunningApp;
+        settings.AutoCheckUpdates = AutoCheckUpdates;
+        settings.UpdateChannel = UpdateChannel.Stable;
+        settings.UpdateNetworkMode = UpdateNetworkModeIndex switch
+        {
+            1 => UpdateNetworkMode.DirectNoProxy,
+            2 => UpdateNetworkMode.SelectedProxy,
+            _ => UpdateNetworkMode.SystemDefault
+        };
+        settings.UpdateProxyProfileId = SelectedUpdateProxy?.Id;
 
         _loggerProvider.SetMinimumLevel(settings.MinimumLogLevel);
         await _settingsService.SaveAsync(settings);
+    }
+
+    private string FormatLastUpdateCheck(AppSettings settings)
+    {
+        if (settings.LastUpdateCheckAtUtc is null || settings.LastUpdateCheckStatus == UpdateCheckStatus.NeverChecked)
+        {
+            return Loc["UpdatesNeverChecked"];
+        }
+
+        var localTime = settings.LastUpdateCheckAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+        var summary = string.IsNullOrWhiteSpace(settings.LastUpdateCheckSummary)
+            ? settings.LastUpdateCheckStatus.ToString()
+            : settings.LastUpdateCheckSummary;
+        return $"{localTime} — {summary}";
+    }
+
+    private static void OpenTrustedUrl(string url)
+    {
+        var trusted = ProxyAwareFileDownloader.ValidateTrustedReleaseUrl(url);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = trusted,
+            UseShellExecute = true
+        });
     }
 
     private static void OpenFolder(string path)

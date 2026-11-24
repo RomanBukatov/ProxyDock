@@ -146,14 +146,22 @@
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            TextWrapping="Wrap"
                            MaxLines="3" />
-                <Button Content="{Binding Loc[NavHistory]}"
-                        Classes="subtle"
-                        Padding="0,2"
-                        Margin="0,2,0,0"
-                        HorizontalAlignment="Left"
-                        FontSize="11.5"
-                        IsVisible="{Binding ShowOpenHistoryAction}"
-                        Command="{Binding OpenHistoryCommand}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                  <Button Content="{Binding ActionLabel}"
+                          Classes="subtle"
+                          Padding="0,2"
+                          FontSize="11.5"
+                          FontWeight="SemiBold"
+                          Foreground="{DynamicResource AccentBrush}"
+                          IsVisible="{Binding ShowCustomAction}"
+                          Command="{Binding ExecuteCustomActionCommand}" />
+                  <Button Content="{Binding Loc[NavHistory]}"
+                          Classes="subtle"
+                          Padding="0,2"
+                          FontSize="11.5"
+                          IsVisible="{Binding ShowOpenHistoryAction}"
+                          Command="{Binding OpenHistoryCommand}" />
+                </StackPanel>
               </StackPanel>
 
               <Button Grid.Column="2"

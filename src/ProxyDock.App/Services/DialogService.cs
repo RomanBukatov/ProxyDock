@@ -16,7 +16,9 @@ public sealed class DialogService : IDialogService
     private readonly IExecutableDiscoveryService _discovery;
     private readonly IProcessTracker _processTracker;
     private readonly ILaunchHistoryRepository _historyRepo;
+    private readonly IUpdateService _updateService;
     private Window? _owner;
+    private Action? _requestAppShutdown;
 
     public DialogService(
         ILocalizationService loc,
@@ -24,7 +26,8 @@ public sealed class DialogService : IDialogService
         IProxyConnectivityTester proxyTester,
         IExecutableDiscoveryService discovery,
         IProcessTracker processTracker,
-        ILaunchHistoryRepository historyRepo)
+        ILaunchHistoryRepository historyRepo,
+        IUpdateService updateService)
     {
         _loc = loc;
         _proxyService = proxyService;
@@ -32,9 +35,14 @@ public sealed class DialogService : IDialogService
         _discovery = discovery;
         _processTracker = processTracker;
         _historyRepo = historyRepo;
+        _updateService = updateService;
     }
 
-    public void AttachOwner(Window owner) => _owner = owner;
+    public void AttachOwner(Window owner, Action? requestAppShutdown = null)
+    {
+        _owner = owner;
+        _requestAppShutdown = requestAppShutdown;
+    }
 
     public async Task<ApplicationProfile?> ShowApplicationEditorAsync(ApplicationProfile? initialProfile)
     {
@@ -113,6 +121,24 @@ public sealed class DialogService : IDialogService
         dialog.DataContext = vm;
         vm.CloseAction = () => dialog.Close();
         await vm.RefreshAsync();
+        await dialog.ShowDialog(_owner);
+    }
+
+    public async Task ShowUpdateDialogAsync(UpdateReleaseInfo release)
+    {
+        if (_owner is null)
+        {
+            return;
+        }
+
+        var dialog = new UpdateDialog();
+        var vm = new UpdateDialogViewModel(
+            release,
+            _updateService,
+            _loc,
+            _requestAppShutdown ?? (() => _owner.Close()));
+        dialog.DataContext = vm;
+        vm.CloseAction = () => dialog.Close();
         await dialog.ShowDialog(_owner);
     }
 

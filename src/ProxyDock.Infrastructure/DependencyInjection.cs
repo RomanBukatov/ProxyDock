@@ -1,12 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ProxyDock.Core.Interfaces;
+using ProxyDock.Core.Models;
 using ProxyDock.Infrastructure.Launching;
 using ProxyDock.Infrastructure.Logging;
 using ProxyDock.Infrastructure.Persistence;
 using ProxyDock.Infrastructure.Platform;
 using ProxyDock.Infrastructure.Proxy;
 using ProxyDock.Infrastructure.Security;
+using ProxyDock.Infrastructure.Updates;
 
 namespace ProxyDock.Infrastructure;
 
@@ -14,12 +16,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddProxyDockInfrastructure(
         this IServiceCollection services,
-        string? customDataRoot = null)
+        string? customDataRoot = null,
+        UpdateRuntimeOptions? updateOptions = null)
     {
         var pathProvider = new AppDataPathProvider(customDataRoot);
         var fileLoggerProvider = new FileLoggerProvider(pathProvider);
 
         services.AddSingleton<IPathProvider>(pathProvider);
+        services.AddSingleton(updateOptions ?? new UpdateRuntimeOptions());
         services.AddSingleton(fileLoggerProvider);
         services.AddLogging(builder =>
         {
@@ -50,6 +54,7 @@ public static class DependencyInjection
         services.AddSingleton<ILaunchStrategy, DesktopLaunchStrategy>();
         services.AddSingleton<ILaunchStrategy, CliTerminalLaunchStrategy>();
         services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
+        services.AddSingleton<IUpdateService, VelopackUpdateService>();
 
         return services;
     }

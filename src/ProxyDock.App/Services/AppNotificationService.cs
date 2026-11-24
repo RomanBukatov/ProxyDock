@@ -14,7 +14,9 @@ public sealed record AppNotification(
     NotificationSeverity Severity,
     TimeSpan? AutoDismissAfter = null,
     bool ShowOpenHistoryAction = false,
-    Guid? RelatedApplicationId = null);
+    Guid? RelatedApplicationId = null,
+    string? ActionLabel = null,
+    Action? ActionCallback = null);
 
 public sealed class AppNotificationService
 {
@@ -30,7 +32,9 @@ public sealed class AppNotificationService
         bool autoDismiss,
         TimeSpan? customDuration = null,
         bool showOpenHistoryAction = false,
-        Guid? relatedApplicationId = null)
+        Guid? relatedApplicationId = null,
+        string? actionLabel = null,
+        Action? actionCallback = null)
     {
         TimeSpan? duration = autoDismiss
             ? customDuration ?? severity switch
@@ -50,6 +54,8 @@ public sealed class AppNotificationService
                 severity,
                 duration,
                 showOpenHistoryAction,
-                relatedApplicationId));
+                relatedApplicationId,
+                actionLabel,
+                actionCallback));
     }
 }

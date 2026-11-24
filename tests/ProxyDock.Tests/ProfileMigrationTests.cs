@@ -24,6 +24,9 @@ public sealed class ProfileMigrationTests
         public Task ShowApplicationDiagnosticsAsync(ApplicationProfile profile, Func<Task>? onEditRequested = null)
             => Task.CompletedTask;
 
+        public Task ShowUpdateDialogAsync(UpdateReleaseInfo release)
+            => Task.CompletedTask;
+
         public Task<bool> ShowConfirmationAsync(string title, string message, string confirmText = "Продолжить", string? cancelText = "Отмена", bool isDanger = false)
             => Task.FromResult(false);
 

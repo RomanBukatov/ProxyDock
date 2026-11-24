@@ -1,4 +1,5 @@
 using Avalonia;
+using Velopack;
 
 namespace ProxyDock.App;
 
@@ -10,6 +11,8 @@ public sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        VelopackApp.Build().Run();
+
         var verifyStartup = args.Any(a => a.Equals("--verify-startup", StringComparison.OrdinalIgnoreCase));
         var customDataDir = TryParseDataDirArgument(args);
         Mutex? instanceMutex = null;
@@ -57,6 +60,12 @@ public sealed class Program
     }
 
     public static string? TryParseDataDirArgument(string[]? args)
+        => TryParsePathArgument(args, "--data-dir");
+
+    public static string? TryParseTestUpdateSourceArgument(string[]? args)
+        => TryParsePathArgument(args, "--test-update-source");
+
+    private static string? TryParsePathArgument(string[]? args, string flagName)
     {
         if (args is null || args.Length == 0)
         {
@@ -72,16 +81,16 @@ public sealed class Program
             }
 
             string? rawValue = null;
-            if (arg.Equals("--data-dir", StringComparison.OrdinalIgnoreCase))
+            if (arg.Equals(flagName, StringComparison.OrdinalIgnoreCase))
             {
                 if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
                 {
                     rawValue = args[i + 1];
                 }
             }
-            else if (arg.StartsWith("--data-dir=", StringComparison.OrdinalIgnoreCase))
+            else if (arg.StartsWith(flagName + "=", StringComparison.OrdinalIgnoreCase))
             {
-                rawValue = arg["--data-dir=".Length..];
+                rawValue = arg[(flagName.Length + 1)..];
             }
 
             if (!string.IsNullOrWhiteSpace(rawValue))

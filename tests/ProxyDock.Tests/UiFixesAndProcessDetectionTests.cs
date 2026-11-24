@@ -193,12 +193,14 @@ public sealed class UiFixesAndProcessDetectionTests
             var appsVm = new ApplicationsViewModel(loc, appService, proxyService, discovery, iconCache, new NoOpDialogService(), new AppLaunchCoordinator(new NoOpLauncher(), appService, discovery, new NoOpDialogService(), notifications, loc), notifications);
             var proxiesVm = new ProxyProfilesViewModel(loc, proxyService, scope.Services.GetRequiredService<IProxyConnectivityTester>(), new NoOpDialogService(), notifications);
             var historyVm = new LaunchHistoryViewModel(loc, historyRepo, new NoOpDialogService(), notifications);
-            var settingsVm = new SettingsViewModel(loc, settingsService, proxyService, scope.Services.GetRequiredService<IStartupManager>(), scope.Services.GetRequiredService<IPathProvider>(), scope.Services.GetRequiredService<IConfigExportService>(), new ThemeService(), scope.Services.GetRequiredService<ProxyDock.Infrastructure.Logging.FileLoggerProvider>(), new NoOpDialogService(), notifications);
+            var settingsVm = new SettingsViewModel(loc, settingsService, proxyService, scope.Services.GetRequiredService<IStartupManager>(), scope.Services.GetRequiredService<IPathProvider>(), scope.Services.GetRequiredService<IConfigExportService>(), scope.Services.GetRequiredService<IUpdateService>(), new ThemeService(), scope.Services.GetRequiredService<ProxyDock.Infrastructure.Logging.FileLoggerProvider>(), new NoOpDialogService(), notifications);
 
             var mainVm = new MainWindowViewModel(
                 loc,
                 diagnostics,
                 settingsService,
+                scope.Services.GetRequiredService<IUpdateService>(),
+                new NoOpDialogService(),
                 notifications,
                 appsVm,
                 proxiesVm,
@@ -402,6 +404,7 @@ public sealed class UiFixesAndProcessDetectionTests
         public Task<ApplicationProfile?> ShowApplicationEditorAsync(ApplicationProfile? initialProfile) => Task.FromResult<ApplicationProfile?>(null);
         public Task<ProxyProfile?> ShowProxyEditorAsync(ProxyProfile? initialProfile) => Task.FromResult<ProxyProfile?>(null);
         public Task ShowApplicationDiagnosticsAsync(ApplicationProfile profile, Func<Task>? onEditRequested = null) => Task.CompletedTask;
+        public Task ShowUpdateDialogAsync(UpdateReleaseInfo release) => Task.CompletedTask;
         public Task<bool> ShowConfirmationAsync(string title, string message, string confirmText = "Продолжить", string? cancelText = "Отмена", bool isDanger = false) => Task.FromResult(false);
         public Task<string?> PickExecutableFileAsync() => Task.FromResult<string?>(null);
         public Task<string?> PickFolderAsync(string title, string? initialPath = null) => Task.FromResult<string?>(null);

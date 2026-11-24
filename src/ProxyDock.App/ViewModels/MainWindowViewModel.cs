@@ -5,7 +5,9 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ProxyDock.App.Services;
+using ProxyDock.Core.Enums;
 using ProxyDock.Core.Interfaces;
+using ProxyDock.Core.Models;
 
 namespace ProxyDock.App.ViewModels;
 
@@ -13,6 +15,7 @@ public sealed partial class ToastNotificationViewModel : ObservableObject
 {
     private readonly Action<ToastNotificationViewModel> _dismissAction;
     private readonly Action? _openHistoryAction;
+    private readonly Action? _customAction;
     private readonly CancellationTokenSource _timerCts = new();
 
     public ToastNotificationViewModel(
@@ -26,6 +29,9 @@ public sealed partial class ToastNotificationViewModel : ObservableObject
         Message = notification.Message;
         Severity = notification.Severity;
         ShowOpenHistoryAction = notification.ShowOpenHistoryAction && openHistoryAction is not null;
+        ActionLabel = notification.ActionLabel ?? string.Empty;
+        _customAction = notification.ActionCallback;
+        ShowCustomAction = !string.IsNullOrWhiteSpace(ActionLabel) && _customAction is not null;
         Loc = loc;
         _dismissAction = dismissAction;
         _openHistoryAction = openHistoryAction;
@@ -36,6 +42,8 @@ public sealed partial class ToastNotificationViewModel : ObservableObject
     public string Message { get; }
     public NotificationSeverity Severity { get; }
     public bool ShowOpenHistoryAction { get; }
+    public string ActionLabel { get; }
+    public bool ShowCustomAction { get; }
     public ILocalizationService Loc { get; }
     public bool HasMessage => !string.IsNullOrWhiteSpace(Message);
     public CancellationToken TimerToken => _timerCts.Token;
@@ -88,6 +96,13 @@ public sealed partial class ToastNotificationViewModel : ObservableObject
         _openHistoryAction?.Invoke();
         _dismissAction(this);
     }
+
+    [RelayCommand]
+    private void ExecuteCustomAction()
+    {
+        _customAction?.Invoke();
+        _dismissAction(this);
+    }
 }
 
 public sealed partial class MainWindowViewModel : ViewModelBase
@@ -96,6 +111,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private readonly IConfigDiagnosticsStore _diagnostics;
     private readonly ISettingsService _settingsService;
+    private readonly IUpdateService _updateService;
+    private readonly IDialogService _dialogs;
+    private readonly AppNotificationService _notifications;
     private readonly Func<TimeSpan, CancellationToken, Task> _delayFunc;
 
     [ObservableProperty]
@@ -111,6 +129,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ILocalizationService loc,
         IConfigDiagnosticsStore diagnostics,
         ISettingsService settingsService,
+        IUpdateService updateService,
+        IDialogService dialogs,
         AppNotificationService notifications,
         ApplicationsViewModel applicationsVm,
         ProxyProfilesViewModel proxiesVm,
@@ -121,6 +141,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         _diagnostics = diagnostics;
         _settingsService = settingsService;
+        _updateService = updateService;
+        _dialogs = dialogs;
+        _notifications = notifications;
         _delayFunc = delayFunc ?? ((d, ct) => Task.Delay(d, ct));
 
         Applications = applicationsVm;
@@ -219,6 +242,42 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Settings.RefreshAsync());
 
         ShowConfigWarningsIfAny();
+    }
+
+    public async Task RunStartupUpdateCheckAsync(CancellationToken cancellationToken = default)
+    {
+        if (_updateService.IsAutoCheckSuppressed)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = await _settingsService.GetAsync(cancellationToken).ConfigureAwait(false);
+            if (!settings.AutoCheckUpdates)
+            {
+                return;
+            }
+
+            var result = await _updateService.CheckForUpdatesAsync(isManualCheck: false, cancellationToken).ConfigureAwait(false);
+            if (result.Status == UpdateCheckStatus.UpdateAvailable && result.AvailableRelease is { } release)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _notifications.Show(
+                        Loc.Format("ToastUpdateAvailableTitle", release.Version),
+                        Loc.Format("ToastUpdateAvailableBody", release.CurrentVersion),
+                        NotificationSeverity.Info,
+                        autoDismiss: false,
+                        actionLabel: Loc["ToastUpdateDetailsAction"],
+                        actionCallback: () => _ = _dialogs.ShowUpdateDialogAsync(release));
+                });
+            }
+        }
+        catch
+        {
+            // Фоновая проверка при старте никогда не должна показывать ошибки или падать
+        }
     }
 
     public void NavigateByKey(string pageKey)
