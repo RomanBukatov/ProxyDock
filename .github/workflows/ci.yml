@@ -68,8 +68,37 @@ jobs:
       - name: Smoke-test startup verification
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $smokeDir = Join-Path $env:RUNNER_TEMP "proxydock-ci-smoke"
-          & "publish/ci-win-x64/ProxyDock.exe" --verify-startup --data-dir $smokeDir
-          if ($LASTEXITCODE -ne 0) {
-            throw "Smoke startup exited with code $LASTEXITCODE"
+          $exePath = (Resolve-Path "publish/ci-win-x64/ProxyDock.exe").Path
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = $exePath
+          $psi.Arguments = "--verify-startup --data-dir `"$smokeDir`""
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardError = $true
+
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          $stderrTask = $proc.StandardError.ReadToEndAsync()
+          if (-not $proc.WaitForExit(30000)) {
+            $proc.Kill()
+            throw "Smoke startup timed out after 30 seconds."
           }
+
+          $stderr = $stderrTask.GetAwaiter().GetResult()
+          if ($proc.ExitCode -ne 0) {
+            if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+              Write-Host "StdErr:`n$stderr"
+            }
+            if (Test-Path (Join-Path $smokeDir "logs")) {
+              Get-ChildItem (Join-Path $smokeDir "logs") -File | ForEach-Object {
+                Write-Host "=== $($_.Name) ==="
+                Get-Content $_.FullName
+              }
+            }
+            throw "Smoke startup exited with code $($proc.ExitCode)"
+          }
+
+          if (-not (Test-Path (Join-Path $smokeDir "config"))) {
+            throw "Smoke startup did not initialize expected data directory at $smokeDir"
+          }
+          Write-Host "Smoke startup verification succeeded (ExitCode=0, DataDir=$smokeDir)."
