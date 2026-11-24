@@ -28,10 +28,17 @@ public sealed class ProxyConnectivityTester : IProxyConnectivityTester
         _logger = logger;
     }
 
-    public async Task<ProxyTestResult> TestAsync(ProxyProfile profile, CancellationToken cancellationToken = default)
+    public Task<ProxyTestResult> TestAsync(ProxyProfile profile, CancellationToken cancellationToken = default)
+        => TestAsync(profile, credentialsOverride: null, ignoreSavedCredentials: false, cancellationToken);
+
+    public async Task<ProxyTestResult> TestAsync(
+        ProxyProfile profile,
+        ProxyCredentials? credentialsOverride,
+        bool ignoreSavedCredentials = false,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var validation = ProxyProfileValidator.Validate(profile);
+        var validation = ProxyProfileValidator.Validate(profile, credentialsOverride?.Password, ignoreSavedCredentials);
         if (!validation.IsValid)
         {
             return new ProxyTestResult
@@ -90,8 +97,8 @@ public sealed class ProxyConnectivityTester : IProxyConnectivityTester
         // Этап 2: Явный HTTP/HTTPS-запрос через настроенный WebProxy (без системных настроек Windows)
         try
         {
-            ProxyCredentials? credentials = null;
-            if (profile.HasCredentials || !string.IsNullOrWhiteSpace(profile.Username))
+            ProxyCredentials? credentials = credentialsOverride;
+            if (credentials is null && !ignoreSavedCredentials && (profile.HasCredentials || !string.IsNullOrWhiteSpace(profile.Username)))
             {
                 credentials = await _credentialStore.LoadAsync(profile.Id, cancellationToken).ConfigureAwait(false);
                 if (credentials is null && !string.IsNullOrWhiteSpace(profile.Username))

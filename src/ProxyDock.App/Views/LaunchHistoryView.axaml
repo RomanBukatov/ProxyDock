@@ -3,8 +3,8 @@
              xmlns:vm="using:ProxyDock.App.ViewModels"
              x:Class="ProxyDock.App.Views.LaunchHistoryView"
              x:DataType="vm:LaunchHistoryViewModel">
-  <ScrollViewer Padding="16,14" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="12">
+  <ScrollViewer Padding="20,18" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="14">
       <!-- Заголовок и очистка -->
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
         <TextBlock Text="{Binding Loc[HistoryTitle]}"
@@ -60,7 +60,7 @@
                   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                     <TextBlock Text="{Binding AppName}"
                                Classes="row-title"
-                               TextTrimming="CharacterEllipsis"
+                               TextWrapping="Wrap"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1"
                                Text="{Binding TimestampText}"

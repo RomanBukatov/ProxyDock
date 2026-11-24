@@ -127,14 +127,15 @@ public sealed class WindowsExecutableDiscoveryService : IExecutableDiscoveryServ
             };
         }
 
-        var isMsixAlias = IsWindowsAppsAliasPath(normalized);
-        var packageRoot = isMsixAlias ? TryResolveMsixPackageRoot(normalized, templateKey) : null;
+        var isMsixAlias = IsWindowsAppsAliasPath(normalized) || MsixPackageResolver.TryReadAppExecLink(normalized) is not null;
+        var msixPkg = MsixPackageResolver.TryResolvePackage(normalized, templateKey);
+        var packageRoot = msixPkg?.PackageRoot;
         var inspectDir = !string.IsNullOrWhiteSpace(packageRoot) && Directory.Exists(packageRoot)
             ? packageRoot
             : Path.GetDirectoryName(normalized);
 
         var (stack, hasCoworkService, hasCodexCompanion) = InspectDirectoryStackMarkers(inspectDir);
-        var iconSource = ResolveIconSourcePath(normalized, packageRoot);
+        var iconSource = ResolveIconSourcePath(normalized, msixPkg);
         var caveats = new List<string>();
 
         if (isMsixAlias)
@@ -474,75 +475,7 @@ public sealed class WindowsExecutableDiscoveryService : IExecutableDiscoveryServ
     }
 
     private static bool IsWindowsAppsAliasPath(string path)
-        => path.Contains(@"\Microsoft\WindowsApps\", StringComparison.OrdinalIgnoreCase);
-
-    private static string? TryResolveMsixPackageRoot(string aliasPath, string? templateKey)
-    {
-        try
-        {
-            const string packagesRegKey = @"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages";
-            using var baseKey = Registry.CurrentUser.OpenSubKey(packagesRegKey, writable: false);
-            if (baseKey is null)
-            {
-                return null;
-            }
-
-            var parentFolderName = Path.GetFileName(Path.GetDirectoryName(aliasPath) ?? string.Empty);
-            var exeName = Path.GetFileName(aliasPath);
-
-            // Если путь имеет вид ...\WindowsApps\<FamilyPrefix>_<PublisherId>\<alias>.exe
-            var familySplit = parentFolderName.Split('_', StringSplitOptions.RemoveEmptyEntries);
-            string? prefixHint = null;
-            string? publisherHint = null;
-
-            if (!parentFolderName.Equals("WindowsApps", StringComparison.OrdinalIgnoreCase) && familySplit.Length >= 2)
-            {
-                prefixHint = familySplit[0] + "_";
-                publisherHint = "__" + familySplit[^1];
-            }
-            else if (string.Equals(templateKey, BuiltInAppTemplates.ClaudeDesktopKey, StringComparison.OrdinalIgnoreCase)
-                || exeName.Equals("claude-desktop.exe", StringComparison.OrdinalIgnoreCase))
-            {
-                prefixHint = "Claude_";
-            }
-            else if (string.Equals(templateKey, BuiltInAppTemplates.CodexDesktopKey, StringComparison.OrdinalIgnoreCase)
-                || exeName.Equals("chatgpt-desktop.exe", StringComparison.OrdinalIgnoreCase))
-            {
-                prefixHint = "OpenAI.Codex_";
-            }
-
-            if (string.IsNullOrEmpty(prefixHint))
-            {
-                return null;
-            }
-
-            foreach (var subKeyName in baseKey.GetSubKeyNames())
-            {
-                if (!subKeyName.StartsWith(prefixHint, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (publisherHint is not null && !subKeyName.EndsWith(publisherHint, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                using var pkgKey = baseKey.OpenSubKey(subKeyName, writable: false);
-                var rootFolder = pkgKey?.GetValue("PackageRootFolder") as string;
-                if (!string.IsNullOrWhiteSpace(rootFolder) && Directory.Exists(rootFolder))
-                {
-                    return rootFolder;
-                }
-            }
-        }
-        catch
-        {
-            // Отказ в доступе к разделу реестра не должен прерывать обнаружение
-        }
-
-        return null;
-    }
+        => MsixPackageResolver.IsWindowsAppsAliasPath(path);
 
     private static (AppRuntimeStack Stack, bool HasCoworkService, bool HasCodexCompanion) InspectDirectoryStackMarkers(string? rootDirectory)
     {
@@ -613,21 +546,38 @@ public sealed class WindowsExecutableDiscoveryService : IExecutableDiscoveryServ
         return (stack, hasCowork, hasCodexCompanion);
     }
 
-    private static string ResolveIconSourcePath(string executablePath, string? packageRoot)
+    private static string ResolveIconSourcePath(string executablePath, MsixPackageInfo? msixPkg)
     {
-        if (string.IsNullOrWhiteSpace(packageRoot) || !Directory.Exists(packageRoot))
+        if (msixPkg is null || string.IsNullOrWhiteSpace(msixPkg.PackageRoot) || !Directory.Exists(msixPkg.PackageRoot))
         {
             return executablePath;
         }
 
+        var manifestVisuals = MsixPackageResolver.ParseManifestVisuals(msixPkg);
+        if (manifestVisuals is not null)
+        {
+            var bestLogo = MsixPackageResolver.ResolveBestLogoAsset(manifestVisuals, desiredPixelSize: 96, preferLightTheme: false);
+            if (bestLogo is not null && File.Exists(bestLogo.FilePath))
+            {
+                return bestLogo.FilePath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(manifestVisuals.ApplicationExecutablePath)
+                && File.Exists(manifestVisuals.ApplicationExecutablePath))
+            {
+                return manifestVisuals.ApplicationExecutablePath;
+            }
+        }
+
+        var packageRoot = msixPkg.PackageRoot;
         string[] preferredGuiBins =
         [
             Path.Combine(packageRoot, "app", "Claude.exe"),
-            Path.Combine(packageRoot, "app", "Codex.exe"),
             Path.Combine(packageRoot, "app", "ChatGPT.exe"),
+            Path.Combine(packageRoot, "app", "Codex.exe"),
             Path.Combine(packageRoot, "Claude.exe"),
-            Path.Combine(packageRoot, "Codex.exe"),
-            Path.Combine(packageRoot, "ChatGPT.exe")
+            Path.Combine(packageRoot, "ChatGPT.exe"),
+            Path.Combine(packageRoot, "Codex.exe")
         ];
 
         foreach (var bin in preferredGuiBins)

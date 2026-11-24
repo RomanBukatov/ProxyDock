@@ -74,11 +74,21 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         _appService.ApplicationsChanged += (_, _) => _ = RefreshAsync();
         _proxyService.ProxiesChanged += (_, _) => _ = RefreshAsync();
         loc.PropertyChanged += (_, _) => _ = RefreshAsync();
+
+        if (Avalonia.Application.Current is { } app)
+        {
+            app.ActualThemeVariantChanged += (_, _) => _ = RefreshAsync();
+        }
+
+        AddTile = new AddAppCardTileViewModel(this);
+        GridItems.Add(AddTile);
     }
 
     public Action<string>? NavigateAction { get; set; }
+    public AddAppCardTileViewModel AddTile { get; }
 
     public ObservableCollection<AppCardViewModel> FilteredApps { get; } = [];
+    public ObservableCollection<object> GridItems { get; } = [];
     public ObservableCollection<DefaultProxyOptionViewModel> AvailableProxies { get; } = [];
     public ObservableCollection<DetectedAppItemViewModel> DetectedApps { get; } = [];
 
@@ -97,6 +107,14 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
 
     public async Task RefreshAsync()
     {
+        bool? preferLight = null;
+        if (Avalonia.Application.Current is { } currentApp)
+        {
+            preferLight = Dispatcher.UIThread.CheckAccess()
+                ? currentApp.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light
+                : await Dispatcher.UIThread.InvokeAsync(() => currentApp.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light);
+        }
+
         var apps = await _appService.GetAllAsync().ConfigureAwait(false);
         var proxies = await _proxyService.GetAllAsync().ConfigureAwait(false);
         var defaultProxy = await _proxyService.GetDefaultAsync().ConfigureAwait(false);
@@ -115,7 +133,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
             var resolved = _discovery.Resolve(app);
             var (proxyLabel, proxyStatus) = ResolveProxySummary(app, byId, defaultProxy, Loc);
             var icon = app.LaunchKind == LaunchKind.Desktop
-                ? _iconCache.GetIcon(resolved.ResolvedPath ?? app.ExecutableOrCommand, app.TemplateKey)
+                ? _iconCache.GetIcon(resolved.ResolvedPath ?? app.ExecutableOrCommand, app.TemplateKey, preferLightThemeOverride: preferLight)
                 : null;
 
             cards.Add(new AppCardViewModel(
@@ -141,7 +159,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         var detectedItems = new List<DetectedAppItemViewModel>();
         foreach (var (tpl, resolvedPath) in unaddedDetected)
         {
-            var icon = _iconCache.GetIcon(resolvedPath, tpl.Key);
+            var icon = _iconCache.GetIcon(resolvedPath, tpl.Key, preferLightThemeOverride: preferLight);
             detectedItems.Add(new DetectedAppItemViewModel(
                 tpl.Key,
                 tpl.DisplayName,
@@ -277,10 +295,14 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
 
         var list = query.ToList();
         FilteredApps.Clear();
+        GridItems.Clear();
         foreach (var item in list)
         {
             FilteredApps.Add(item);
+            GridItems.Add(item);
         }
+
+        GridItems.Add(AddTile);
 
         HasFilteredApps = FilteredApps.Count > 0;
         ShowNoSearchMatches = HasAnyApps && !HasFilteredApps;
@@ -413,7 +435,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         }
     }
 
-    internal static (string Label, ProxyCheckStatus Status) ResolveProxySummary(
+    public static (string Label, ProxyCheckStatus Status) ResolveProxySummary(
         ApplicationProfile app,
         IReadOnlyDictionary<Guid, ProxyProfile> byId,
         ProxyProfile? defaultProxy,
@@ -428,17 +450,17 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         {
             if (app.ProxyProfileId is Guid pid && byId.TryGetValue(pid, out var matched))
             {
-                return ($"{matched.Name} ({ProxyUriBuilder.FormatHost(matched.Host)}:{matched.Port})", matched.LastCheckStatus);
+                return (matched.Name, matched.LastCheckStatus);
             }
 
-            return ("Прокси не назначен / удалён", ProxyCheckStatus.Invalid);
+            return (loc["ProxyUnassigned"], ProxyCheckStatus.Invalid);
         }
 
         if (defaultProxy is not null)
         {
-            return ($"{loc["ProxyModeDefault"]} · {defaultProxy.Name} ({ProxyUriBuilder.FormatHost(defaultProxy.Host)}:{defaultProxy.Port})", defaultProxy.LastCheckStatus);
+            return (defaultProxy.Name, defaultProxy.LastCheckStatus);
         }
 
-        return ($"{loc["ProxyModeDefault"]}: {loc["NoDefaultProxy"]}", ProxyCheckStatus.Invalid);
+        return (loc["ProxyUnassigned"], ProxyCheckStatus.Unknown);
     }
 }

@@ -56,7 +56,21 @@ public sealed class DefaultProxyOptionViewModel
 }
 
 /// <summary>
-/// Компактная строка добавленного приложения на главном экране.
+/// Интерактивная карточка с плюсом в конце сетки приложений.
+/// </summary>
+public sealed class AddAppCardTileViewModel
+{
+    public AddAppCardTileViewModel(ApplicationsViewModel parent)
+    {
+        Parent = parent;
+    }
+
+    public ApplicationsViewModel Parent { get; }
+    public ILocalizationService Loc => Parent.Loc;
+}
+
+/// <summary>
+/// Карточка приложения в адаптивной сетке лаунчера.
 /// </summary>
 public sealed partial class AppCardViewModel : ObservableObject
 {
@@ -115,13 +129,19 @@ public sealed partial class AppCardViewModel : ObservableObject
     public ProxyProfile? DefaultProxy { get; }
 
     public string Name => Profile.Name;
+    public string FirstLetter => string.IsNullOrWhiteSpace(Profile.Name) ? "A" : Profile.Name.Trim()[..1].ToUpperInvariant();
     public bool IsDesktop => Profile.LaunchKind == LaunchKind.Desktop;
     public bool IsCli => Profile.LaunchKind == LaunchKind.Cli;
     public bool HasDesktopIcon => IsDesktop && Icon is not null;
     public bool HasDesktopFallbackIcon => IsDesktop && Icon is null;
     public string TargetDisplay => string.IsNullOrWhiteSpace(ResolvedPath) ? Profile.ExecutableOrCommand : ResolvedPath;
     public bool ShowMissingWarning => !TargetFound;
-    public IBrush ProxyStatusDotBrush => FormatHelpers.GetProxyStatusFg(ProxyStatus);
+    public bool ShowProxyDot => TargetFound;
+    public string SubtitleText => TargetFound ? AssignedProxyLabel : Loc["TargetMissingShort"];
+    public IBrush SubtitleBrush => TargetFound ? FormatHelpers.Brush("TextSecondaryBrush") : FormatHelpers.Brush("ErrorBrush");
+    public IBrush ProxyStatusDotBrush => Profile.ProxyMode == ProxyAssignmentMode.DirectNoProxy
+        ? FormatHelpers.Brush("TextMutedBrush")
+        : FormatHelpers.GetProxyStatusFg(ProxyStatus);
 
     public Task AssignProxyAsync(ProxyAssignmentMode mode, Guid? proxyId)
         => _assignProxyAction(this, mode, proxyId);
@@ -354,7 +374,8 @@ internal static class FormatHelpers
 {
     public static IBrush Brush(string key)
     {
-        if (Avalonia.Application.Current is { } app
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()
+            && Avalonia.Application.Current is { } app
             && app.TryGetResource(key, app.ActualThemeVariant, out var res)
             && res is IBrush b)
         {

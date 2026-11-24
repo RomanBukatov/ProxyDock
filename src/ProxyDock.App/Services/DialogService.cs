@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using ProxyDock.App.ViewModels;
 using ProxyDock.App.Views;
@@ -11,16 +12,19 @@ public sealed class DialogService : IDialogService
 {
     private readonly ILocalizationService _loc;
     private readonly IProxyProfileService _proxyService;
+    private readonly IProxyConnectivityTester _proxyTester;
     private readonly IExecutableDiscoveryService _discovery;
     private Window? _owner;
 
     public DialogService(
         ILocalizationService loc,
         IProxyProfileService proxyService,
+        IProxyConnectivityTester proxyTester,
         IExecutableDiscoveryService discovery)
     {
         _loc = loc;
         _proxyService = proxyService;
+        _proxyTester = proxyTester;
         _discovery = discovery;
     }
 
@@ -49,8 +53,21 @@ public sealed class DialogService : IDialogService
             return null;
         }
 
-        var vm = new ProxyEditorViewModel(_loc, initialProfile);
-        var window = new ProxyEditorWindow { DataContext = vm };
+        var existingProxies = await _proxyService.GetAllAsync();
+        var defaultByInitialState = initialProfile is null && existingProxies.Count == 0;
+        var window = new ProxyEditorWindow();
+        var vm = new ProxyEditorViewModel(
+            _loc,
+            _proxyTester,
+            initialProfile,
+            suggestDefault: defaultByInitialState,
+            readClipboardAsync: async () =>
+            {
+                var clipboard = TopLevel.GetTopLevel(window)?.Clipboard;
+                return clipboard is null ? null : await clipboard.TryGetTextAsync();
+            });
+
+        window.DataContext = vm;
         vm.CloseRequested = ok => window.Close(ok);
 
         var accepted = await window.ShowDialog<bool>(_owner);

@@ -5,101 +5,193 @@
         x:DataType="vm:ProxyEditorViewModel"
         Title="{Binding WindowTitle}"
         Icon="avares://ProxyDock/Assets/proxydock.ico"
-        Width="520"
-        Height="560"
-        MinWidth="440"
-        MinHeight="420"
+        Width="480"
+        Height="580"
+        MinWidth="420"
+        MinHeight="430"
         WindowStartupLocation="CenterOwner"
         CanResize="True">
   <DockPanel Background="{DynamicResource AppCanvasBrush}">
+    <!-- Нижняя панель действий с встроенной проверкой -->
     <Border DockPanel.Dock="Bottom"
-            Padding="18,12"
+            Padding="20,12"
             Background="{DynamicResource HeaderSurfaceBrush}"
             BorderBrush="{DynamicResource BorderSubtleBrush}"
             BorderThickness="0,1,0,0">
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-        <Button Content="Отмена" Classes="secondary" Command="{Binding CancelCommand}" />
-        <Button Content="Сохранить прокси" Classes="primary" Command="{Binding SaveCommand}" />
-      </StackPanel>
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+        <Button Grid.Column="0"
+                Content="{Binding TestButtonText}"
+                Classes="secondary"
+                MinWidth="136"
+                Height="34"
+                Command="{Binding TestOrCancelCommand}" />
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+          <Button Content="{Binding Loc[BtnCancel]}"
+                  Classes="secondary"
+                  Height="34"
+                  Padding="14,0"
+                  Command="{Binding CancelCommand}" />
+          <Button Content="{Binding Loc[ProxySaveBtn]}"
+                  Classes="primary"
+                  Height="34"
+                  Padding="18,0"
+                  Command="{Binding SaveCommand}" />
+        </StackPanel>
+      </Grid>
     </Border>
 
-    <ScrollViewer Padding="20,16" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Spacing="12">
+    <ScrollViewer Padding="20,18" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="14">
         <TextBlock Text="{Binding WindowTitle}" Classes="page-title" />
 
+        <!-- Быстрая вставка IP:PORT или HTTP URL -->
         <Border Classes="card"
-                Padding="10,8"
-                Background="{DynamicResource InfoSoftBrush}"
-                BorderBrush="{DynamicResource InfoBrush}">
-          <TextBlock Text="Пароль прокси не хранится в JSON и не отображается в интерфейсе. Он защищается через Windows DPAPI (CurrentUser)."
-                     FontSize="12"
-                     Foreground="{DynamicResource TextSecondaryBrush}"
-                     TextWrapping="Wrap" />
+                Padding="12,10"
+                Background="{DynamicResource ElevatedSurfaceBrush}">
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding Loc[ProxyQuickPasteLabel]}"
+                         FontSize="12"
+                         FontWeight="Medium"
+                         Foreground="{DynamicResource TextSecondaryBrush}"
+                         VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding Loc[ProxyQuickPasteApplied]}"
+                         FontSize="11.5"
+                         Foreground="{DynamicResource SuccessBrush}"
+                         IsVisible="{Binding QuickPasteApplied}"
+                         VerticalAlignment="Center" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox Text="{Binding QuickPasteInput}"
+                       PlaceholderText="{Binding Loc[ProxyQuickPastePlaceholder]}"
+                       Classes="mono-input" />
+              <Button Grid.Column="1"
+                      Content="{Binding Loc[BtnPaste]}"
+                      Classes="secondary"
+                      Height="32"
+                      Padding="12,0"
+                      Command="{Binding PasteFromClipboardCommand}" />
+            </Grid>
+          </StackPanel>
         </Border>
 
+        <!-- Основные поля прокси -->
         <StackPanel Spacing="5">
-          <TextBlock Text="Название профиля *" FontWeight="Medium" />
-          <TextBox Text="{Binding Name}" PlaceholderText="Например: Proxy A — Основной" />
+          <TextBlock Text="{Binding Loc[ProxyNameLabel]}" Classes="field-label" />
+          <TextBox Text="{Binding Name}" PlaceholderText="{Binding Loc[ProxyNamePlaceholder]}" />
         </StackPanel>
 
-        <Grid ColumnDefinitions="*,120" ColumnSpacing="10">
+        <Grid ColumnDefinitions="*,118" ColumnSpacing="10">
           <StackPanel Spacing="5">
-            <TextBlock Text="Host / IP *" FontWeight="Medium" />
-            <TextBox Text="{Binding Host}" PlaceholderText="127.0.0.1 или proxy.example.com" />
+            <TextBlock Text="{Binding Loc[ProxyHostLabel]}" Classes="field-label" />
+            <TextBox Text="{Binding Host}" PlaceholderText="{Binding Loc[ProxyHostPlaceholder]}" />
           </StackPanel>
           <StackPanel Grid.Column="1" Spacing="5">
-            <TextBlock Text="Port *" FontWeight="Medium" />
-            <NumericUpDown Value="{Binding Port}" Minimum="1" Maximum="65535" Increment="1" FormatString="0" />
+            <TextBlock Text="{Binding Loc[ProxyPortLabel]}" Classes="field-label" />
+            <NumericUpDown Value="{Binding Port}"
+                           Minimum="1"
+                           Maximum="65535"
+                           Increment="1"
+                           FormatString="0" />
           </StackPanel>
         </Grid>
 
         <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
           <StackPanel Spacing="5">
-            <TextBlock Text="Имя пользователя (опционально)" FontWeight="Medium" />
-            <TextBox Text="{Binding Username}" PlaceholderText="Логин для прокси" />
+            <TextBlock Text="{Binding Loc[ProxyUsernameLabel]}" Classes="field-label" />
+            <TextBox Text="{Binding Username}" PlaceholderText="{Binding Loc[ProxyUsernamePlaceholder]}" />
           </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="5">
-            <TextBlock Text="Новый пароль (опционально)" FontWeight="Medium" />
-            <TextBox Text="{Binding Password}" PasswordChar="•" PlaceholderText="Не менять, если пусто" />
-          </StackPanel>
-        </Grid>
-
-        <Border Classes="card" Padding="10,8" IsVisible="{Binding HasSavedPassword}">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-            <TextBlock Text="Пароль уже сохранён в хранилище DPAPI."
-                       Foreground="{DynamicResource SuccessBrush}"
-                       VerticalAlignment="Center"
-                       FontSize="12" />
-            <CheckBox Grid.Column="1"
-                      Content="Удалить пароль"
-                      IsChecked="{Binding ClearSavedPassword}" />
-          </Grid>
-        </Border>
-
-        <StackPanel Spacing="5">
-          <TextBlock Text="NO_PROXY (исключения через запятую)" FontWeight="Medium" />
-          <TextBox Text="{Binding NoProxy}" PlaceholderText="localhost,127.0.0.1,::1" />
-        </StackPanel>
-
-        <Grid ColumnDefinitions="150,*" ColumnSpacing="10">
-          <StackPanel Spacing="5">
-            <TextBlock Text="Таймаут (сек)" FontWeight="Medium" />
-            <NumericUpDown Value="{Binding CheckTimeoutSeconds}" Minimum="1" Maximum="120" Increment="1" FormatString="0" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="5">
-            <TextBlock Text="URL для HTTPS-диагностики" FontWeight="Medium" />
-            <TextBox Text="{Binding DiagnosticEndpointUrl}" />
+          <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock Text="{Binding Loc[ProxyPasswordLabel]}" Classes="field-label" />
+            <TextBox Text="{Binding Password}"
+                     PasswordChar="•"
+                     PlaceholderText="{Binding PasswordWatermark}" />
+            <TextBlock Text="{Binding Loc[ProxyDpapiHint]}"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       TextWrapping="Wrap" />
           </StackPanel>
         </Grid>
 
-        <CheckBox Content="Сделать этот прокси профилем по умолчанию"
+        <Grid ColumnDefinitions="*,Auto"
+              ColumnSpacing="10"
+              IsVisible="{Binding HasSavedPassword}">
+          <TextBlock Text="{Binding Loc[ProxySavedPasswordNote]}"
+                     FontSize="12"
+                     Foreground="{DynamicResource SuccessBrush}"
+                     VerticalAlignment="Center" />
+          <CheckBox Grid.Column="1"
+                    Content="{Binding Loc[ProxyClearPassword]}"
+                    IsChecked="{Binding ClearSavedPassword}" />
+        </Grid>
+
+        <CheckBox Content="{Binding Loc[ProxySetDefaultCheck]}"
                   IsChecked="{Binding IsDefault}" />
 
+        <!-- Сворачиваемые дополнительные настройки -->
+        <Expander Header="{Binding Loc[ProxyAdvancedHeader]}"
+                  IsExpanded="{Binding IsAdvancedExpanded}"
+                  HorizontalAlignment="Stretch"
+                  Classes="clean-expander">
+          <StackPanel Spacing="10" Margin="0,6,0,0">
+            <StackPanel Spacing="5">
+              <TextBlock Text="{Binding Loc[ProxyNoProxyLabel]}" Classes="field-label" />
+              <TextBox Text="{Binding NoProxy}" PlaceholderText="localhost,127.0.0.1,::1" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="130,*" ColumnSpacing="10">
+              <StackPanel Spacing="5">
+                <TextBlock Text="{Binding Loc[ProxyTimeoutLabel]}" Classes="field-label" />
+                <NumericUpDown Value="{Binding CheckTimeoutSeconds}"
+                               Minimum="1"
+                               Maximum="120"
+                               Increment="1"
+                               FormatString="0" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="5">
+                <TextBlock Text="{Binding Loc[ProxyDiagUrlLabel]}" Classes="field-label" />
+                <TextBox Text="{Binding DiagnosticEndpointUrl}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Expander>
+
+        <!-- Результат встроенной проверки -->
         <Border Classes="card"
+                Padding="12,9"
+                Background="{Binding TestStatusBackground}"
+                BorderBrush="{Binding TestStatusForeground}"
+                IsVisible="{Binding HasTestResult}">
+          <StackPanel Spacing="3">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Ellipse Width="7"
+                       Height="7"
+                       Fill="{Binding TestStatusForeground}"
+                       VerticalAlignment="Center" />
+              <TextBlock Text="{Binding TestResultTitle}"
+                         FontSize="12.5"
+                         FontWeight="SemiBold"
+                         Foreground="{Binding TestStatusForeground}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="{Binding TestResultMessage}"
+                       FontSize="11.5"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding TestResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Ошибки валидации -->
+        <Border Classes="card"
+                Padding="12,9"
                 Background="{DynamicResource ErrorSoftBrush}"
                 BorderBrush="{DynamicResource ErrorBrush}"
                 IsVisible="{Binding ValidationError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
           <TextBlock Text="{Binding ValidationError}"
+                     FontSize="12"
                      Foreground="{DynamicResource ErrorBrush}"
                      TextWrapping="Wrap" />
         </Border>

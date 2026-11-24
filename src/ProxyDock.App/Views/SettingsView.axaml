@@ -4,8 +4,8 @@
              xmlns:models="using:ProxyDock.Core.Models"
              x:Class="ProxyDock.App.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
-  <ScrollViewer Padding="16,14" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="14">
+  <ScrollViewer Padding="20,18" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16">
       <TextBlock Text="{Binding Loc[SettingsTitle]}" Classes="page-title" />
 
       <!-- Оформление и язык -->

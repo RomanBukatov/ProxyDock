@@ -35,7 +35,15 @@ public interface ISettingsService
 
 public interface IProxyConnectivityTester
 {
-    Task<ProxyTestResult> TestAsync(ProxyProfile profile, CancellationToken cancellationToken = default);
+    Task<ProxyTestResult> TestAsync(
+        ProxyProfile profile,
+        CancellationToken cancellationToken = default);
+
+    Task<ProxyTestResult> TestAsync(
+        ProxyProfile profile,
+        ProxyCredentials? credentialsOverride,
+        bool ignoreSavedCredentials = false,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IConfigExportService

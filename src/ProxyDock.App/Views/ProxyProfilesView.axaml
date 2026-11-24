@@ -3,8 +3,8 @@
              xmlns:vm="using:ProxyDock.App.ViewModels"
              x:Class="ProxyDock.App.Views.ProxyProfilesView"
              x:DataType="vm:ProxyProfilesViewModel">
-  <ScrollViewer Padding="16,14" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="12">
+  <ScrollViewer Padding="20,18" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="14">
       <!-- Заголовок и действия -->
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
         <TextBlock Text="{Binding Loc[ProxiesTitle]}"
@@ -16,14 +16,14 @@
                     VerticalAlignment="Center">
           <Button Content="{Binding Loc[BtnTestAll]}"
                   Classes="secondary"
-                  Height="30"
+                  Height="32"
                   Padding="12,0"
                   IsVisible="{Binding HasProxies}"
                   Command="{Binding TestAllCommand}" />
           <Button Content="{Binding Loc[BtnAddProxy]}"
                   Classes="primary"
-                  Height="30"
-                  Padding="12,0"
+                  Height="32"
+                  Padding="14,0"
                   Command="{Binding AddProxyCommand}" />
         </StackPanel>
       </Grid>

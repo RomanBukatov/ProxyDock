@@ -48,7 +48,10 @@ public interface IStartupManager
 
 public interface IAppIconExtractor
 {
-    (int Width, int Height, byte[] BgraPixels)? ExtractIconPixels(string filePath);
+    (int Width, int Height, byte[] BgraPixels)? ExtractIconPixels(
+        string filePath,
+        int desiredPixelSize = 96,
+        bool preferLightTheme = false);
 }
 
 public interface ILocalizationService : System.ComponentModel.INotifyPropertyChanged

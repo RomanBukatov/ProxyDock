@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ProxyDock.App.Services;
@@ -54,6 +55,16 @@ public sealed partial class ConfirmationDialogViewModel : ObservableObject
 public sealed partial class ProxyEditorViewModel : ViewModelBase
 {
     private readonly ProxyProfile _working;
+    private readonly IProxyConnectivityTester? _tester;
+    private readonly Func<Task<string?>>? _readClipboardAsync;
+    private CancellationTokenSource? _testCts;
+    private bool _isApplyingPaste;
+
+    [ObservableProperty]
+    private string _quickPasteInput = string.Empty;
+
+    [ObservableProperty]
+    private bool _quickPasteApplied;
 
     [ObservableProperty]
     private string _name = string.Empty;
@@ -89,14 +100,39 @@ public sealed partial class ProxyEditorViewModel : ViewModelBase
     private bool _isDefault;
 
     [ObservableProperty]
+    private bool _isAdvancedExpanded;
+
+    [ObservableProperty]
+    private bool _isTesting;
+
+    [ObservableProperty]
+    private bool _hasTestResult;
+
+    [ObservableProperty]
+    private ProxyCheckStatus _testStatus = ProxyCheckStatus.Unknown;
+
+    [ObservableProperty]
+    private string _testResultTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _testResultMessage = string.Empty;
+
+    [ObservableProperty]
     private string? _validationError;
 
-    public ProxyEditorViewModel(ILocalizationService loc, ProxyProfile? initial = null)
+    public ProxyEditorViewModel(
+        ILocalizationService loc,
+        IProxyConnectivityTester? tester = null,
+        ProxyProfile? initial = null,
+        bool suggestDefault = false,
+        Func<Task<string?>>? readClipboardAsync = null)
         : base(loc)
     {
+        _tester = tester;
+        _readClipboardAsync = readClipboardAsync;
         IsEditMode = initial is not null;
         _working = initial is null
-            ? new ProxyProfile()
+            ? new ProxyProfile { IsDefault = suggestDefault }
             : new ProxyProfile
             {
                 Id = initial.Id,
@@ -131,15 +167,215 @@ public sealed partial class ProxyEditorViewModel : ViewModelBase
     }
 
     public bool IsEditMode { get; }
-    public string WindowTitle => IsEditMode ? "Редактирование прокси" : "Новый HTTP-прокси";
+    public string WindowTitle => IsEditMode ? Loc["ProxyEditorEditTitle"] : Loc["ProxyEditorNewTitle"];
+    public string PasswordWatermark => HasSavedPassword ? Loc["ProxyPasswordPlaceholderKeep"] : Loc["ProxyPasswordPlaceholderNew"];
+    public string TestButtonText => IsTesting ? Loc["BtnTestingCancel"] : Loc["ProxyTestBtn"];
+    public IBrush TestStatusForeground => FormatHelpers.GetProxyStatusFg(IsTesting ? ProxyCheckStatus.Testing : TestStatus);
+    public IBrush TestStatusBackground => FormatHelpers.GetProxyStatusBg(IsTesting ? ProxyCheckStatus.Testing : TestStatus);
+
     public ProxyProfile? SavedProfile { get; private set; }
     public string? EnteredNewPassword { get; private set; }
     public bool ShouldClearPassword { get; private set; }
     public Action<bool>? CloseRequested { get; set; }
 
+    partial void OnQuickPasteInputChanged(string value)
+    {
+        if (_isApplyingPaste || string.IsNullOrWhiteSpace(value))
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                QuickPasteApplied = false;
+            }
+
+            return;
+        }
+
+        _ = TryApplyRawProxyString(value);
+    }
+
+    partial void OnHostChanged(string value)
+    {
+        if (_isApplyingPaste || string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        // Если пользователь вставил полный IP:PORT или HTTP URL прямо в поле Host — автоматически разбираем и распределяем по полям
+        _ = TryApplyRawProxyString(value);
+    }
+
+    partial void OnIsTestingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(TestButtonText));
+        OnPropertyChanged(nameof(TestStatusForeground));
+        OnPropertyChanged(nameof(TestStatusBackground));
+    }
+
+    partial void OnTestStatusChanged(ProxyCheckStatus value)
+    {
+        OnPropertyChanged(nameof(TestStatusForeground));
+        OnPropertyChanged(nameof(TestStatusBackground));
+    }
+
+    public bool TryApplyRawProxyString(string? rawInput)
+    {
+        if (!ProxyInputParser.TryParse(rawInput, out var parsed) || parsed is null)
+        {
+            return false;
+        }
+
+        _isApplyingPaste = true;
+        try
+        {
+            Host = parsed.Host;
+            Port = parsed.Port;
+
+            if (!string.IsNullOrEmpty(parsed.Username))
+            {
+                Username = parsed.Username;
+            }
+
+            if (parsed.Password is not null)
+            {
+                Password = parsed.Password;
+                ClearSavedPassword = false;
+            }
+
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                Name = $"{ProxyUriBuilder.FormatHost(parsed.Host)}:{parsed.Port}";
+            }
+
+            QuickPasteApplied = true;
+            ValidationError = null;
+            return true;
+        }
+        finally
+        {
+            _isApplyingPaste = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task PasteFromClipboardAsync()
+    {
+        if (_readClipboardAsync is null)
+        {
+            return;
+        }
+
+        var text = await _readClipboardAsync();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        _isApplyingPaste = true;
+        try
+        {
+            QuickPasteInput = text.Trim();
+        }
+        finally
+        {
+            _isApplyingPaste = false;
+        }
+
+        if (!TryApplyRawProxyString(text))
+        {
+            ValidationError = "Не удалось распознать формат прокси в буфере обмена. Ожидается IP:PORT или http://login:pass@host:port.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task TestOrCancelAsync()
+    {
+        if (_tester is null)
+        {
+            return;
+        }
+
+        if (_testCts is not null)
+        {
+            _testCts.Cancel();
+            return;
+        }
+
+        var draft = BuildDraftProfile(allowFallbackNameForTest: true);
+        var newPass = string.IsNullOrEmpty(Password) ? null : Password;
+        var clear = ClearSavedPassword || string.IsNullOrWhiteSpace(Username);
+        var validation = ProxyProfileValidator.Validate(draft, newPass, clear);
+        if (!validation.IsValid)
+        {
+            ExpandAdvancedIfHasErrors(validation);
+            ValidationError = string.Join(Environment.NewLine, validation.Errors.Select(e => "• " + e.Message));
+            return;
+        }
+
+        ValidationError = null;
+        ProxyCredentials? credsOverride = null;
+        if (!clear && !string.IsNullOrWhiteSpace(draft.Username) && newPass is not null)
+        {
+            credsOverride = new ProxyCredentials(draft.Username.Trim(), newPass);
+        }
+
+        using var cts = new CancellationTokenSource();
+        _testCts = cts;
+        IsTesting = true;
+        HasTestResult = true;
+        TestStatus = ProxyCheckStatus.Testing;
+        TestResultTitle = FormatHelpers.GetProxyStatusLabel(ProxyCheckStatus.Testing);
+        TestResultMessage = $"{ProxyUriBuilder.FormatHost(draft.Host)}:{draft.Port}";
+
+        try
+        {
+            var result = await _tester.TestAsync(draft, credsOverride, ignoreSavedCredentials: clear, cts.Token);
+            TestStatus = result.Status;
+
+            var latencyMs = result.HttpsLatencyMs ?? result.TcpLatencyMs;
+            var metaParts = new List<string> { FormatHelpers.GetProxyStatusLabel(result.Status) };
+            if (latencyMs is long ms)
+            {
+                metaParts.Add($"{ms} мс");
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.ExternalIp))
+            {
+                metaParts.Add($"IP {result.ExternalIp}");
+            }
+
+            TestResultTitle = string.Join(" · ", metaParts);
+            TestResultMessage = result.Message;
+
+            _working.LastCheckStatus = result.Status;
+            _working.LastCheckedAtUtc = result.CheckedAtUtc;
+            _working.LastLatencyMs = latencyMs;
+            _working.LastExternalIp = result.ExternalIp;
+            _working.LastCheckMessage = result.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            TestStatus = ProxyCheckStatus.Unknown;
+            TestResultTitle = "Проверка отменена";
+            TestResultMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            TestStatus = ProxyCheckStatus.Unreachable;
+            TestResultTitle = FormatHelpers.GetProxyStatusLabel(ProxyCheckStatus.Unreachable);
+            TestResultMessage = ex.Message;
+        }
+        finally
+        {
+            _testCts = null;
+            IsTesting = false;
+        }
+    }
+
     [RelayCommand]
     private void Save()
     {
+        CancelRunningTest();
+
         _working.Name = Name;
         _working.Host = Host;
         _working.Port = Port;
@@ -154,6 +390,7 @@ public sealed partial class ProxyEditorViewModel : ViewModelBase
         var validation = ProxyProfileValidator.Validate(_working, newPass, clear);
         if (!validation.IsValid)
         {
+            ExpandAdvancedIfHasErrors(validation);
             ValidationError = string.Join(Environment.NewLine, validation.Errors.Select(e => "• " + e.Message));
             return;
         }
@@ -166,7 +403,56 @@ public sealed partial class ProxyEditorViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void Cancel() => CloseRequested?.Invoke(false);
+    private void Cancel()
+    {
+        CancelRunningTest();
+        CloseRequested?.Invoke(false);
+    }
+
+    private ProxyProfile BuildDraftProfile(bool allowFallbackNameForTest)
+    {
+        var draftName = string.IsNullOrWhiteSpace(Name) && allowFallbackNameForTest
+            ? "Проверка прокси"
+            : Name;
+
+        return new ProxyProfile
+        {
+            Id = _working.Id,
+            Name = draftName,
+            Protocol = _working.Protocol,
+            Host = Host,
+            Port = Port,
+            Username = Username,
+            HasCredentials = _working.HasCredentials,
+            NoProxy = NoProxy,
+            IsDefault = IsDefault,
+            CheckTimeoutSeconds = CheckTimeoutSeconds,
+            DiagnosticEndpointUrl = DiagnosticEndpointUrl
+        };
+    }
+
+    private void ExpandAdvancedIfHasErrors(ValidationResult validation)
+    {
+        if (validation.Errors.Any(e =>
+                e.PropertyName is nameof(ProxyProfile.NoProxy)
+                    or nameof(ProxyProfile.CheckTimeoutSeconds)
+                    or nameof(ProxyProfile.DiagnosticEndpointUrl)))
+        {
+            IsAdvancedExpanded = true;
+        }
+    }
+
+    private void CancelRunningTest()
+    {
+        try
+        {
+            _testCts?.Cancel();
+        }
+        catch
+        {
+            // Игнорируем при закрытии диалога
+        }
+    }
 }
 
 public sealed partial class ApplicationEditorViewModel : ViewModelBase
