@@ -3,126 +3,274 @@
              xmlns:vm="using:ProxyDock.App.ViewModels"
              x:Class="ProxyDock.App.Views.ApplicationsView"
              x:DataType="vm:ApplicationsViewModel">
-  <ScrollViewer Padding="28,24">
-    <StackPanel Spacing="18" MaxWidth="1280">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding Loc[AppsTitle]}" Classes="page-title" />
-          <TextBlock Text="{Binding Loc[AppsDescription]}" Classes="page-desc" />
-        </StackPanel>
-
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-          <Button Content="{Binding Loc[BtnFromTemplate]}" Classes="secondary">
-            <Button.Flyout>
-              <MenuFlyout>
-                <MenuItem Header="Desktop: Google Antigravity" Command="{Binding AddAntigravityTemplateCommand}" />
-                <MenuItem Header="Desktop: Claude Desktop" Command="{Binding AddClaudeDesktopTemplateCommand}" />
-                <MenuItem Header="Desktop: Codex Desktop" Command="{Binding AddCodexDesktopTemplateCommand}" />
-                <Separator />
-                <MenuItem Header="CLI (доп.): Claude Code" Command="{Binding AddClaudeCliTemplateCommand}" />
-                <MenuItem Header="CLI (доп.): OpenAI Codex" Command="{Binding AddCodexCliTemplateCommand}" />
-              </MenuFlyout>
-            </Button.Flyout>
-          </Button>
-          <Button Content="+ CLI-программа" Classes="secondary" Command="{Binding AddCliApplicationCommand}" />
-          <Button Content="{Binding Loc[BtnAddApp]}" Classes="primary" Command="{Binding AddDesktopApplicationCommand}" />
-        </StackPanel>
+  <ScrollViewer Padding="16,14" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="12">
+      <!-- Заголовок и добавление -->
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+        <TextBlock Text="{Binding Loc[AppsTitle]}"
+                   Classes="page-title"
+                   VerticalAlignment="Center" />
+        <Button Grid.Column="1"
+                Content="{Binding Loc[BtnAdd]}"
+                Classes="primary"
+                Height="30"
+                Padding="12,0">
+          <Button.Flyout>
+            <MenuFlyout>
+              <MenuItem Header="{Binding Loc[MenuAddDesktop]}" Command="{Binding AddDesktopApplicationCommand}" />
+              <MenuItem Header="{Binding Loc[MenuAddCli]}" Command="{Binding AddCliApplicationCommand}" />
+              <Separator />
+              <MenuItem Header="{Binding Loc[MenuTemplatesHeader]}" IsEnabled="False" />
+              <MenuItem Header="Google Antigravity" Command="{Binding AddAntigravityTemplateCommand}" />
+              <MenuItem Header="Claude Desktop" Command="{Binding AddClaudeDesktopTemplateCommand}" />
+              <MenuItem Header="Codex Desktop" Command="{Binding AddCodexDesktopTemplateCommand}" />
+              <Separator />
+              <MenuItem Header="CLI: Claude Code" Command="{Binding AddClaudeCliTemplateCommand}" />
+              <MenuItem Header="CLI: OpenAI Codex" Command="{Binding AddCodexCliTemplateCommand}" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
       </Grid>
 
-      <!-- Поиск и фильтр -->
-      <Grid ColumnDefinitions="*,220" ColumnSpacing="12">
-        <TextBox Text="{Binding SearchQuery}" PlaceholderText="{Binding Loc[SearchAppsPlaceholder]}" />
-        <ComboBox Grid.Column="1" SelectedIndex="{Binding KindFilterIndex}" HorizontalAlignment="Stretch">
+      <!-- Панель прокси по умолчанию -->
+      <Border Background="{DynamicResource CardSurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSubtleBrush}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="12,8">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <TextBlock Text="{Binding Loc[DefaultProxyLabel]}"
+                     FontSize="12.5"
+                     Foreground="{DynamicResource TextSecondaryBrush}"
+                     VerticalAlignment="Center" />
+
+          <ComboBox Grid.Column="1"
+                    ItemsSource="{Binding AvailableProxies}"
+                    SelectedItem="{Binding SelectedDefaultProxy}"
+                    IsVisible="{Binding HasProxies}"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="380">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:DefaultProxyOptionViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Ellipse Width="7" Height="7" Fill="{Binding StatusDotBrush}" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding DisplayName}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <StackPanel Grid.Column="1"
+                      Orientation="Horizontal"
+                      Spacing="8"
+                      IsVisible="{Binding !HasProxies}"
+                      VerticalAlignment="Center">
+            <TextBlock Text="{Binding Loc[NoDefaultProxy]}"
+                       Classes="caption"
+                       VerticalAlignment="Center" />
+            <Button Content="{Binding Loc[BtnAddProxy]}"
+                    Classes="secondary"
+                    Height="28"
+                    Padding="10,0"
+                    FontSize="12"
+                    Command="{Binding AddNewProxyCommand}" />
+          </StackPanel>
+
+          <Button Grid.Column="2"
+                  Content="{Binding Loc[ManageProxiesShort]}"
+                  Classes="subtle"
+                  VerticalAlignment="Center"
+                  Command="{Binding GoToProxiesCommand}" />
+        </Grid>
+      </Border>
+
+      <!-- Поиск и компактный фильтр -->
+      <Grid ColumnDefinitions="*,Auto"
+            ColumnSpacing="8"
+            IsVisible="{Binding HasAnyApps}">
+        <TextBox Text="{Binding SearchQuery}"
+                 PlaceholderText="{Binding Loc[SearchAppsPlaceholder]}" />
+        <ComboBox Grid.Column="1"
+                  SelectedIndex="{Binding KindFilterIndex}"
+                  MinWidth="105"
+                  IsVisible="{Binding HasCliApps}">
           <ComboBoxItem Content="{Binding Loc[FilterAll]}" />
           <ComboBoxItem Content="{Binding Loc[FilterDesktop]}" />
           <ComboBoxItem Content="{Binding Loc[FilterCli]}" />
         </ComboBox>
       </Grid>
 
-      <Border Classes="card" IsVisible="{Binding !HasFilteredApps}">
-        <StackPanel Spacing="8">
-          <TextBlock Text="Приложений не найдено" FontWeight="SemiBold" />
-          <TextBlock Text="Добавьте desktop-программу по .exe или выберите один из готовых профилей (Google Antigravity, Claude Desktop, Codex Desktop)."
-                     Classes="caption"
-                     TextWrapping="Wrap" />
+      <!-- Пустой список добавленных приложений -->
+      <Border Classes="card" Padding="14" IsVisible="{Binding !HasAnyApps}">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Loc[AppsEmptyTitle]}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Loc[AppsEmptySubtitle]}" Classes="caption" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
 
-      <ItemsControl ItemsSource="{Binding FilteredApps}" IsVisible="{Binding HasFilteredApps}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:AppCardViewModel">
-            <Border Classes="card card-interactive" Margin="0,0,0,10">
-              <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="14">
-                <Border Width="44" Height="44" CornerRadius="10" Background="{DynamicResource ElevatedSurfaceBrush}" VerticalAlignment="Top">
-                  <Panel>
-                    <Image Source="{Binding Icon}" Width="28" Height="28" IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                    <TextBlock Text="APP" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNull}}"
-                               Foreground="{DynamicResource AccentBrush}" />
-                  </Panel>
-                </Border>
+      <!-- Ничего не найдено по фильтру -->
+      <Border Classes="card" Padding="12" IsVisible="{Binding ShowNoSearchMatches}">
+        <TextBlock Text="{Binding Loc[AppsNoMatches]}" Classes="caption" />
+      </Border>
 
-                <StackPanel Grid.Column="1" Spacing="5">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="{Binding Name}" Classes="card-title" VerticalAlignment="Center" />
-                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
-                      <TextBlock Text="{Binding KindLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </Border>
-                    <Border Classes="pill" Background="{DynamicResource AccentSoftBrush}" IsVisible="{Binding ShowChromiumBadge}">
-                      <TextBlock Text="--proxy-server" FontSize="11" Foreground="{DynamicResource AccentBrush}" />
-                    </Border>
-                    <Border Classes="pill" Background="{Binding ApplicabilityBackground}">
-                      <TextBlock Text="{Binding ApplicabilityBadge}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding ApplicabilityForeground}" />
-                    </Border>
+      <!-- Основной список добавленных приложений -->
+      <Border Classes="surface-list" IsVisible="{Binding HasFilteredApps}">
+        <ItemsControl Classes="row-list" ItemsSource="{Binding FilteredApps}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:AppCardViewModel">
+              <Border Classes="list-row">
+                <Grid ColumnDefinitions="32,*,Auto,Auto" ColumnSpacing="10">
+                  <!-- Иконка приложения -->
+                  <Border Width="32"
+                          Height="32"
+                          CornerRadius="7"
+                          Background="{DynamicResource ElevatedSurfaceBrush}"
+                          VerticalAlignment="Center">
+                    <Panel>
+                      <Image Source="{Binding Icon}"
+                             Width="24"
+                             Height="24"
+                             IsVisible="{Binding HasDesktopIcon}" />
+                      <TextBlock Text="APP"
+                                 FontSize="10"
+                                 FontWeight="Bold"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding HasDesktopFallbackIcon}"
+                                 Foreground="{DynamicResource AccentBrush}" />
+                      <TextBlock Text="&gt;_"
+                                 FontFamily="Cascadia Mono, Consolas, monospace"
+                                 FontSize="12"
+                                 FontWeight="Bold"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsCli}"
+                                 Foreground="{DynamicResource AccentBrush}" />
+                    </Panel>
+                  </Border>
+
+                  <!-- Название и назначенный прокси -->
+                  <StackPanel Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Spacing="2"
+                              MinWidth="120">
+                    <TextBlock Text="{Binding Name}"
+                               Classes="row-title"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Name}" />
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                      <Ellipse Width="7"
+                               Height="7"
+                               Fill="{Binding ProxyStatusDotBrush}"
+                               VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding AssignedProxyLabel}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"
+                                 TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2"
+                                 Text="{Binding Loc[TargetMissingShort]}"
+                                 FontSize="11.5"
+                                 Foreground="{DynamicResource ErrorBrush}"
+                                 IsVisible="{Binding ShowMissingWarning}"
+                                 VerticalAlignment="Center" />
+                    </Grid>
                   </StackPanel>
 
-                  <TextBlock Text="{Binding TargetDisplay}" Classes="mono caption" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding WorkingDirDisplay, StringFormat='Папка: {0}'}"
-                             Classes="caption"
-                             IsVisible="{Binding HasWorkingDir}"
-                             TextTrimming="CharacterEllipsis" />
+                  <!-- Кнопка запуска -->
+                  <Button Grid.Column="2"
+                          Content="{Binding Loc[BtnLaunch]}"
+                          Classes="primary"
+                          MinWidth="92"
+                          Height="30"
+                          Padding="12,0"
+                          VerticalAlignment="Center"
+                          Command="{Binding LaunchCommand}" />
 
-                  <TextBlock Text="{Binding CompatibilitySummary}"
-                             FontSize="12"
-                             Foreground="{DynamicResource TextSecondaryBrush}"
-                             IsVisible="{Binding HasCompatibilitySummary}"
-                             TextWrapping="Wrap" />
-
-                  <TextBlock Text="Исполняемый файл или команда не найдены на этом ПК — проверьте путь в настройках профиля."
-                             FontSize="12"
-                             Foreground="{DynamicResource ErrorBrush}"
-                             IsVisible="{Binding ShowMissingWarning}"
-                             TextWrapping="Wrap" />
-
-                  <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,2,0,0">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                      <Ellipse Width="8" Height="8" Fill="{Binding ProxyStatusDotBrush}" VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding AssignedProxyLabel}" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding LastLaunchedText}" Classes="caption" VerticalAlignment="Center" />
-                  </StackPanel>
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <Button Content="Запустить" Classes="primary" Command="{Binding LaunchCommand}" />
-                  <Button Content="Изменить" Classes="secondary" Command="{Binding EditCommand}" />
-                  <Button Content="⋯" Classes="secondary" Padding="10,7">
+                  <!-- Дополнительные действия -->
+                  <Button Grid.Column="3"
+                          Content="⋯"
+                          Classes="icon-btn"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="{Binding Loc[BtnMoreActionsTooltip]}">
                     <Button.Flyout>
-                      <MenuFlyout>
-                        <MenuItem Header="Запустить без прокси" Command="{Binding LaunchDirectCommand}" />
-                        <MenuItem Header="Дублировать" Command="{Binding DuplicateCommand}" />
-                        <MenuItem Header="Открыть папку" Command="{Binding OpenFolderCommand}" />
-                        <Separator />
-                        <MenuItem Header="Удалить" Command="{Binding DeleteCommand}" />
-                      </MenuFlyout>
+                      <MenuFlyout Opening="OnAppRowMenuOpening" />
                     </Button.Flyout>
                   </Button>
-                </StackPanel>
-              </Grid>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+
+      <!-- Автоматически обнаруженные приложения (скрывается, когда всё добавлено) -->
+      <StackPanel Spacing="6" Margin="0,4,0,0" IsVisible="{Binding HasDetectedApps}">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <TextBlock Text="{Binding Loc[DetectedAppsTitle]}"
+                     Classes="section-title"
+                     VerticalAlignment="Center" />
+          <Button Grid.Column="1"
+                  Content="{Binding Loc[AddAllDetected]}"
+                  Classes="subtle"
+                  Padding="8,3"
+                  FontSize="12"
+                  IsVisible="{Binding HasMultipleDetectedApps}"
+                  Command="{Binding AddAllDetectedDesktopCommand}" />
+        </Grid>
+
+        <Border Classes="surface-list">
+          <ItemsControl Classes="row-list" ItemsSource="{Binding DetectedApps}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:DetectedAppItemViewModel">
+                <Border Classes="list-row" Padding="12,8">
+                  <Grid ColumnDefinitions="28,*,Auto" ColumnSpacing="10">
+                    <Border Width="28"
+                            Height="28"
+                            CornerRadius="6"
+                            Background="{DynamicResource ElevatedSurfaceBrush}"
+                            VerticalAlignment="Center">
+                      <Panel>
+                        <Image Source="{Binding Icon}"
+                               Width="20"
+                               Height="20"
+                               IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        <TextBlock Text="APP"
+                                   FontSize="9.5"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNull}}"
+                                   Foreground="{DynamicResource AccentBrush}" />
+                      </Panel>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                      <TextBlock Text="{Binding Name}"
+                                 Classes="row-title"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding Name}" />
+                      <TextBlock Text="{Binding Loc[DetectedOnPc]}" Classes="caption" />
+                    </StackPanel>
+
+                    <Button Grid.Column="2"
+                            Content="{Binding Loc[BtnAddDetected]}"
+                            Classes="secondary"
+                            MinWidth="84"
+                            Height="28"
+                            Padding="12,0"
+                            VerticalAlignment="Center"
+                            Command="{Binding AddCommand}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

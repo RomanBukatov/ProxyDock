@@ -20,6 +20,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
     private readonly AppLaunchCoordinator _coordinator;
     private readonly AppNotificationService _notifications;
     private List<AppCardViewModel> _allCards = [];
+    private bool _isUpdatingProxies;
 
     [ObservableProperty]
     private string _searchQuery = string.Empty;
@@ -28,7 +29,28 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
     private int _kindFilterIndex; // 0 = All, 1 = Desktop, 2 = CLI
 
     [ObservableProperty]
+    private bool _hasAnyApps;
+
+    [ObservableProperty]
+    private bool _hasCliApps;
+
+    [ObservableProperty]
     private bool _hasFilteredApps;
+
+    [ObservableProperty]
+    private bool _showNoSearchMatches;
+
+    [ObservableProperty]
+    private bool _hasProxies;
+
+    [ObservableProperty]
+    private DefaultProxyOptionViewModel? _selectedDefaultProxy;
+
+    [ObservableProperty]
+    private bool _hasDetectedApps;
+
+    [ObservableProperty]
+    private bool _hasMultipleDetectedApps;
 
     public ApplicationsViewModel(
         ILocalizationService loc,
@@ -51,12 +73,27 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
 
         _appService.ApplicationsChanged += (_, _) => _ = RefreshAsync();
         _proxyService.ProxiesChanged += (_, _) => _ = RefreshAsync();
+        loc.PropertyChanged += (_, _) => _ = RefreshAsync();
     }
 
+    public Action<string>? NavigateAction { get; set; }
+
     public ObservableCollection<AppCardViewModel> FilteredApps { get; } = [];
+    public ObservableCollection<DefaultProxyOptionViewModel> AvailableProxies { get; } = [];
+    public ObservableCollection<DetectedAppItemViewModel> DetectedApps { get; } = [];
 
     partial void OnSearchQueryChanged(string value) => ApplyFilter();
     partial void OnKindFilterIndexChanged(int value) => ApplyFilter();
+
+    partial void OnSelectedDefaultProxyChanged(DefaultProxyOptionViewModel? value)
+    {
+        if (_isUpdatingProxies || value is null)
+        {
+            return;
+        }
+
+        _ = SetDefaultProxyAsync(value.Id);
+    }
 
     public async Task RefreshAsync()
     {
@@ -65,11 +102,18 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         var defaultProxy = await _proxyService.GetDefaultAsync().ConfigureAwait(false);
         var byId = proxies.ToDictionary(p => p.Id);
 
+        var orderedProxies = proxies
+            .OrderByDescending(p => p.IsDefault)
+            .ThenBy(p => p.Name)
+            .ToList();
+
+        var proxyOptions = orderedProxies.Select(p => new DefaultProxyOptionViewModel(p)).ToList();
+
         var cards = new List<AppCardViewModel>();
         foreach (var app in apps.OrderBy(a => a.LaunchKind).ThenBy(a => a.Name))
         {
             var resolved = _discovery.Resolve(app);
-            var (proxyLabel, proxyStatus) = DashboardViewModel.ResolveProxySummary(app, byId, defaultProxy);
+            var (proxyLabel, proxyStatus) = ResolveProxySummary(app, byId, defaultProxy, Loc);
             var icon = app.LaunchKind == LaunchKind.Desktop
                 ? _iconCache.GetIcon(resolved.ResolvedPath ?? app.ExecutableOrCommand, app.TemplateKey)
                 : null;
@@ -82,18 +126,131 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
                 resolved.Found,
                 resolved.ResolvedPath,
                 resolved.StackInfo,
+                Loc,
+                orderedProxies,
+                defaultProxy,
                 LaunchAppAsync,
+                AssignProxyAsync,
                 EditAppAsync,
                 DuplicateAppAsync,
                 DeleteAppAsync,
                 OpenFolder));
         }
 
+        var unaddedDetected = FilterUnaddedDetectedTemplates(apps, _discovery.DiscoverTemplate);
+        var detectedItems = new List<DetectedAppItemViewModel>();
+        foreach (var (tpl, resolvedPath) in unaddedDetected)
+        {
+            var icon = _iconCache.GetIcon(resolvedPath, tpl.Key);
+            detectedItems.Add(new DetectedAppItemViewModel(
+                tpl.Key,
+                tpl.DisplayName,
+                icon,
+                Loc,
+                item => _coordinator.AddFromTemplateAsync(item.Key)));
+        }
+
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            _isUpdatingProxies = true;
+            try
+            {
+                AvailableProxies.Clear();
+                foreach (var option in proxyOptions)
+                {
+                    AvailableProxies.Add(option);
+                }
+
+                HasProxies = AvailableProxies.Count > 0;
+                SelectedDefaultProxy = defaultProxy is not null
+                    ? AvailableProxies.FirstOrDefault(o => o.Id == defaultProxy.Id)
+                    : AvailableProxies.FirstOrDefault();
+            }
+            finally
+            {
+                _isUpdatingProxies = false;
+            }
+
+            DetectedApps.Clear();
+            foreach (var detected in detectedItems)
+            {
+                DetectedApps.Add(detected);
+            }
+
+            HasDetectedApps = DetectedApps.Count > 0;
+            HasMultipleDetectedApps = DetectedApps.Count > 1;
+
             _allCards = cards;
+            HasAnyApps = _allCards.Count > 0;
+            HasCliApps = _allCards.Any(c => c.IsCli);
+            if (!HasCliApps && KindFilterIndex != 0)
+            {
+                KindFilterIndex = 0;
+            }
+
             ApplyFilter();
         });
+    }
+
+    public static IReadOnlyList<(BuiltInAppTemplates.TemplateDescriptor Template, string ResolvedPath)> FilterUnaddedDetectedTemplates(
+        IReadOnlyList<ApplicationProfile> existingApps,
+        Func<string, ExecutableDiscoveryResult> discoverTemplate)
+    {
+        var existingPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var app in existingApps)
+        {
+            if (string.IsNullOrWhiteSpace(app.ExecutableOrCommand))
+            {
+                continue;
+            }
+
+            var expanded = Environment.ExpandEnvironmentVariables(app.ExecutableOrCommand.Trim().Trim('"'));
+            try
+            {
+                if (Path.IsPathRooted(expanded))
+                {
+                    existingPaths.Add(Path.GetFullPath(expanded).TrimEnd(Path.DirectorySeparatorChar));
+                }
+            }
+            catch
+            {
+                // Игнорируем некорректные пути при сопоставлении
+            }
+        }
+
+        var result = new List<(BuiltInAppTemplates.TemplateDescriptor Template, string ResolvedPath)>();
+        foreach (var tpl in BuiltInAppTemplates.DesktopTemplates)
+        {
+            if (existingApps.Any(a => string.Equals(a.TemplateKey, tpl.Key, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var probe = discoverTemplate(tpl.Key);
+            if (!probe.Found || string.IsNullOrWhiteSpace(probe.ResolvedPath))
+            {
+                continue;
+            }
+
+            var normalizedResolved = probe.ResolvedPath.Trim();
+            try
+            {
+                normalizedResolved = Path.GetFullPath(normalizedResolved).TrimEnd(Path.DirectorySeparatorChar);
+            }
+            catch
+            {
+                // Оставляем исходный путь
+            }
+
+            if (existingPaths.Contains(normalizedResolved))
+            {
+                continue;
+            }
+
+            result.Add((tpl, probe.ResolvedPath));
+        }
+
+        return result;
     }
 
     private void ApplyFilter()
@@ -114,8 +271,8 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
             var q = SearchQuery.Trim();
             query = query.Where(c =>
                 c.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || c.TargetDisplay.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || (c.Profile.WorkingDirectory?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+                || c.AssignedProxyLabel.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || c.TargetDisplay.Contains(q, StringComparison.OrdinalIgnoreCase));
         }
 
         var list = query.ToList();
@@ -126,6 +283,25 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         }
 
         HasFilteredApps = FilteredApps.Count > 0;
+        ShowNoSearchMatches = HasAnyApps && !HasFilteredApps;
+    }
+
+    private async Task SetDefaultProxyAsync(Guid proxyId)
+    {
+        await _proxyService.SetDefaultAsync(proxyId);
+    }
+
+    [RelayCommand]
+    private void GoToProxies() => NavigateAction?.Invoke("Proxies");
+
+    [RelayCommand]
+    private async Task AddNewProxyAsync()
+    {
+        var saved = await _dialogs.ShowProxyEditorAsync(null);
+        if (saved is not null)
+        {
+            _notifications.Show("Прокси добавлен", $"Профиль «{saved.Name}» ({saved.Host}:{saved.Port}) сохранён.", NotificationSeverity.Success);
+        }
     }
 
     [RelayCommand]
@@ -157,6 +333,9 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private Task AddAllDetectedDesktopAsync() => _coordinator.AddAllDetectedDesktopTemplatesAsync();
+
+    [RelayCommand]
     private Task AddAntigravityTemplateAsync() => _coordinator.AddFromTemplateAsync(BuiltInAppTemplates.GoogleAntigravityKey);
 
     [RelayCommand]
@@ -173,6 +352,13 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
 
     private Task LaunchAppAsync(AppCardViewModel card, bool direct)
         => _coordinator.LaunchWithPromptsAsync(card.Profile, direct);
+
+    private async Task AssignProxyAsync(AppCardViewModel card, ProxyAssignmentMode mode, Guid? proxyId)
+    {
+        card.Profile.ProxyMode = mode;
+        card.Profile.ProxyProfileId = mode == ProxyAssignmentMode.Specific ? proxyId : null;
+        await _appService.SaveAsync(card.Profile);
+    }
 
     private async Task EditAppAsync(AppCardViewModel card)
     {
@@ -225,5 +411,34 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         {
             _notifications.Show("Папка не найдена", "Не удалось определить существующую папку для открытия.", NotificationSeverity.Warning);
         }
+    }
+
+    internal static (string Label, ProxyCheckStatus Status) ResolveProxySummary(
+        ApplicationProfile app,
+        IReadOnlyDictionary<Guid, ProxyProfile> byId,
+        ProxyProfile? defaultProxy,
+        ILocalizationService loc)
+    {
+        if (app.ProxyMode == ProxyAssignmentMode.DirectNoProxy)
+        {
+            return (loc["ProxyModeDirect"], ProxyCheckStatus.Unknown);
+        }
+
+        if (app.ProxyMode == ProxyAssignmentMode.Specific)
+        {
+            if (app.ProxyProfileId is Guid pid && byId.TryGetValue(pid, out var matched))
+            {
+                return ($"{matched.Name} ({ProxyUriBuilder.FormatHost(matched.Host)}:{matched.Port})", matched.LastCheckStatus);
+            }
+
+            return ("Прокси не назначен / удалён", ProxyCheckStatus.Invalid);
+        }
+
+        if (defaultProxy is not null)
+        {
+            return ($"{loc["ProxyModeDefault"]} · {defaultProxy.Name} ({ProxyUriBuilder.FormatHost(defaultProxy.Host)}:{defaultProxy.Port})", defaultProxy.LastCheckStatus);
+        }
+
+        return ($"{loc["ProxyModeDefault"]}: {loc["NoDefaultProxy"]}", ProxyCheckStatus.Invalid);
     }
 }

@@ -3,79 +3,120 @@
              xmlns:vm="using:ProxyDock.App.ViewModels"
              x:Class="ProxyDock.App.Views.LaunchHistoryView"
              x:DataType="vm:LaunchHistoryViewModel">
-  <ScrollViewer Padding="28,24">
-    <StackPanel Spacing="18" MaxWidth="1280">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding Loc[HistoryTitle]}" Classes="page-title" />
-          <TextBlock Text="{Binding Loc[HistoryDescription]}" Classes="page-desc" />
-        </StackPanel>
+  <ScrollViewer Padding="16,14" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="12">
+      <!-- Заголовок и очистка -->
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+        <TextBlock Text="{Binding Loc[HistoryTitle]}"
+                   Classes="page-title"
+                   VerticalAlignment="Center" />
         <Button Grid.Column="1"
                 Content="{Binding Loc[BtnClearHistory]}"
                 Classes="danger"
+                Height="30"
+                Padding="12,0"
                 VerticalAlignment="Center"
                 IsVisible="{Binding HasEntries}"
                 Command="{Binding ClearHistoryCommand}" />
       </Grid>
 
-      <Grid ColumnDefinitions="*,220" ColumnSpacing="12">
-        <TextBox Text="{Binding SearchQuery}" PlaceholderText="Поиск по приложению, прокси или сообщению..." />
-        <ComboBox Grid.Column="1" SelectedIndex="{Binding StatusFilterIndex}" HorizontalAlignment="Stretch">
-          <ComboBoxItem Content="Все статусы" />
-          <ComboBoxItem Content="Успешный старт" />
-          <ComboBoxItem Content="С предупреждением" />
-          <ComboBoxItem Content="Ошибка" />
+      <!-- Поиск и фильтр статуса -->
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBox Text="{Binding SearchQuery}"
+                 PlaceholderText="{Binding Loc[HistorySearchPlaceholder]}" />
+        <ComboBox Grid.Column="1"
+                  SelectedIndex="{Binding StatusFilterIndex}"
+                  MinWidth="135">
+          <ComboBoxItem Content="{Binding Loc[StatusFilterAll]}" />
+          <ComboBoxItem Content="{Binding Loc[StatusFilterStarted]}" />
+          <ComboBoxItem Content="{Binding Loc[StatusFilterWarning]}" />
+          <ComboBoxItem Content="{Binding Loc[StatusFilterError]}" />
         </ComboBox>
       </Grid>
 
-      <Border Classes="card" Background="{DynamicResource InfoSoftBrush}" BorderBrush="{DynamicResource InfoBrush}" Padding="12">
-        <TextBlock Text="{Binding Loc[HistoryDisclaimer]}" FontSize="12.5" TextWrapping="Wrap" />
+      <!-- Пояснение по диагностике запуска -->
+      <Border Classes="card"
+              Padding="10,8"
+              Background="{DynamicResource InfoSoftBrush}"
+              BorderBrush="{DynamicResource InfoBrush}">
+        <TextBlock Text="{Binding Loc[HistoryDisclaimer]}"
+                   FontSize="12"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   TextWrapping="Wrap" />
       </Border>
 
-      <Border Classes="card" IsVisible="{Binding !HasEntries}">
-        <TextBlock Text="Записей в истории запусков пока нет." Classes="caption" />
+      <!-- Пустая история -->
+      <Border Classes="card" Padding="14" IsVisible="{Binding !HasEntries}">
+        <TextBlock Text="{Binding Loc[HistoryEmpty]}" Classes="caption" />
       </Border>
 
-      <ItemsControl ItemsSource="{Binding Entries}" IsVisible="{Binding HasEntries}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:HistoryItemViewModel">
-            <Border Classes="card" Margin="0,0,0,10">
-              <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="{Binding AppName}" Classes="card-title" VerticalAlignment="Center" />
-                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
-                      <TextBlock Text="{Binding KindLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </Border>
-                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
-                      <TextBlock Text="{Binding StrategyLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </Border>
-                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
-                      <TextBlock Text="{Binding ApplicabilityBadge}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </Border>
+      <!-- Журнал запусков -->
+      <Border Classes="surface-list" IsVisible="{Binding HasEntries}">
+        <ItemsControl Classes="row-list" ItemsSource="{Binding Entries}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HistoryItemViewModel">
+              <Border Classes="list-row">
+                <StackPanel Spacing="5">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <TextBlock Text="{Binding AppName}"
+                               Classes="row-title"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding TimestampText}"
+                               Classes="caption"
+                               VerticalAlignment="Center" />
+                  </Grid>
+
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
                     <Border Classes="pill" Background="{Binding StatusBackground}">
-                      <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
+                      <TextBlock Text="{Binding StatusLabel}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{Binding StatusForeground}" />
                     </Border>
-                  </StackPanel>
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding KindLabel}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding StrategyLabel}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding ApplicabilityBadge}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Classes="pill" Background="{DynamicResource ElevatedSurfaceBrush}">
+                      <TextBlock Text="{Binding PidText}"
+                                 Classes="mono"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                  </WrapPanel>
 
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                    <TextBlock Text="{Binding PidText}" Classes="mono caption" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding TimestampText}" Classes="caption" VerticalAlignment="Center" />
-                  </StackPanel>
-                </Grid>
-
-                <TextBlock Text="{Binding ProxyLabel, StringFormat='Прокси: {0}'}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" />
-                <TextBlock Text="{Binding Entry.Message}" FontSize="12.5" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding WarningsText}"
-                           IsVisible="{Binding HasWarnings}"
-                           FontSize="12"
-                           Foreground="{DynamicResource WarningBrush}"
-                           TextWrapping="Wrap" />
-              </StackPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+                  <TextBlock Text="{Binding ProxyLabel}"
+                             FontSize="12"
+                             Foreground="{DynamicResource TextSecondaryBrush}"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Entry.Message}"
+                             FontSize="12"
+                             Foreground="{DynamicResource TextSecondaryBrush}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding WarningsText}"
+                             IsVisible="{Binding HasWarnings}"
+                             FontSize="12"
+                             Foreground="{DynamicResource WarningBrush}"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

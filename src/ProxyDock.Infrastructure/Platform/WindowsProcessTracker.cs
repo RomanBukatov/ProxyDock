@@ -40,6 +40,7 @@ public sealed class WindowsProcessTracker : IProcessTracker
             {
                 try
                 {
+                    removed.Process.EnableRaisingEvents = false;
                     removed.Process.Exited -= removed.ExitHandler;
                     removed.Process.Dispose();
                 }
@@ -180,6 +181,7 @@ public sealed class WindowsProcessTracker : IProcessTracker
             {
                 try
                 {
+                    entry.Process.EnableRaisingEvents = false;
                     entry.Process.Exited -= entry.ExitHandler;
                     entry.Process.Dispose();
                 }

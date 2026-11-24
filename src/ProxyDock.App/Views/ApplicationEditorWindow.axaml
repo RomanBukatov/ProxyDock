@@ -6,39 +6,39 @@
         x:DataType="vm:ApplicationEditorViewModel"
         Title="{Binding WindowTitle}"
         Icon="avares://ProxyDock/Assets/proxydock.ico"
-        Width="700"
-        Height="740"
-        MinWidth="600"
-        MinHeight="560"
+        Width="640"
+        Height="640"
+        MinWidth="460"
+        MinHeight="440"
         WindowStartupLocation="CenterOwner">
   <DockPanel Background="{DynamicResource AppCanvasBrush}">
     <Border DockPanel.Dock="Bottom"
-            Padding="20,14"
-            Background="{DynamicResource SidebarSurfaceBrush}"
+            Padding="18,12"
+            Background="{DynamicResource HeaderSurfaceBrush}"
             BorderBrush="{DynamicResource BorderSubtleBrush}"
             BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="*,Auto">
-        <TextBlock Text="Изменения окружения применяются только к дочернему процессу и не затрагивают Windows."
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+        <TextBlock Text="Настройки окружения применяются только к дочернему процессу."
                    Classes="caption"
                    VerticalAlignment="Center"
                    TextWrapping="Wrap" />
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" Margin="12,0,0,0">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Button Content="Отмена" Classes="secondary" Command="{Binding CancelCommand}" />
-          <Button Content="Сохранить профиль" Classes="primary" Command="{Binding SaveCommand}" />
+          <Button Content="Сохранить" Classes="primary" Command="{Binding SaveCommand}" />
         </StackPanel>
       </Grid>
     </Border>
 
-    <ScrollViewer Padding="24,20">
-      <StackPanel Spacing="14">
-        <TextBlock Text="{Binding WindowTitle}" Classes="section-title" FontSize="19" />
+    <ScrollViewer Padding="20,16" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="12">
+        <TextBlock Text="{Binding WindowTitle}" Classes="page-title" />
 
-        <Grid ColumnDefinitions="*,220" ColumnSpacing="12">
-          <StackPanel Spacing="6">
+        <Grid ColumnDefinitions="1.4*,*" ColumnSpacing="10">
+          <StackPanel Spacing="5">
             <TextBlock Text="Название приложения *" FontWeight="Medium" />
             <TextBox Text="{Binding Name}" PlaceholderText="Например: Google Antigravity или Claude Desktop" />
           </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="6">
+          <StackPanel Grid.Column="1" Spacing="5">
             <TextBlock Text="Тип запуска" FontWeight="Medium" />
             <ComboBox SelectedIndex="{Binding LaunchKindIndex}" HorizontalAlignment="Stretch">
               <ComboBoxItem Content="Desktop GUI (.exe)" />
@@ -47,18 +47,20 @@
           </StackPanel>
         </Grid>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="5">
           <TextBlock Text="{Binding TargetFieldLabel}" FontWeight="Medium" />
           <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
             <TextBox Text="{Binding ExecutableOrCommand}" PlaceholderText="{Binding TargetWatermark}" />
             <Button Grid.Column="1" Content="Обзор..." Classes="secondary" Command="{Binding BrowseExecutableCommand}" />
-            <Button Grid.Column="2" Content="Проверить стек" Classes="secondary" Command="{Binding InspectCurrentTargetCommand}" />
+            <Button Grid.Column="2" Content="Проверить" Classes="secondary" Command="{Binding InspectCurrentTargetCommand}" />
           </Grid>
 
-          <Border Classes="card" Padding="12" Margin="0,4,0,0">
-            <StackPanel Spacing="6">
+          <!-- Техническая диагностика стека (MSIX / Electron / Chromium / WebView2 / путь) -->
+          <Border Classes="card" Background="{DynamicResource ElevatedSurfaceBrush}" Margin="0,2,0,0">
+            <StackPanel Spacing="5">
+              <TextBlock Text="Диагностика стека и совместимость" FontSize="12.5" FontWeight="SemiBold" />
               <TextBlock Text="{Binding DiscoverySummary}"
-                         FontSize="12.5"
+                         FontSize="12"
                          Foreground="{DynamicResource TextSecondaryBrush}"
                          TextWrapping="Wrap" />
               <TextBlock Text="{Binding StackCaveatsText}"
@@ -70,7 +72,7 @@
           </Border>
         </StackPanel>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="5">
           <TextBlock Text="Рабочая директория (опционально)" FontWeight="Medium" />
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
             <TextBox Text="{Binding WorkingDirectory}" PlaceholderText="По умолчанию — папка .exe или папка проекта" />
@@ -78,13 +80,13 @@
           </Grid>
         </StackPanel>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="5">
           <TextBlock Text="Дополнительные аргументы командной строки" FontWeight="Medium" />
           <TextBox Text="{Binding Arguments}" PlaceholderText="Например: --profile work" />
         </StackPanel>
 
-        <Grid ColumnDefinitions="230,*" ColumnSpacing="12">
-          <StackPanel Spacing="6">
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+          <StackPanel Spacing="5">
             <TextBlock Text="Режим прокси" FontWeight="Medium" />
             <ComboBox SelectedIndex="{Binding ProxyModeIndex}" HorizontalAlignment="Stretch">
               <ComboBoxItem Content="Прокси по умолчанию" />
@@ -92,14 +94,14 @@
               <ComboBoxItem Content="Без прокси (напрямую)" />
             </ComboBox>
           </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowSpecificProxyPicker}">
+          <StackPanel Grid.Column="1" Spacing="5" IsVisible="{Binding ShowSpecificProxyPicker}">
             <TextBlock Text="Профиль прокси *" FontWeight="Medium" />
             <ComboBox ItemsSource="{Binding AvailableProxies}"
                       SelectedItem="{Binding SelectedProxy}"
                       HorizontalAlignment="Stretch">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="models:ProxyProfile">
-                  <TextBlock Text="{Binding Name}" />
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
@@ -108,11 +110,11 @@
 
         <!-- Секция Desktop GUI -->
         <Border Classes="card" IsVisible="{Binding IsDesktopMode}">
-          <StackPanel Spacing="10">
+          <StackPanel Spacing="8">
             <TextBlock Text="Параметры Desktop GUI" FontWeight="SemiBold" />
             <CheckBox Content="Передавать флаг Chromium/Electron (--proxy-server=http://host:port)"
                       IsChecked="{Binding UseChromiumProxyFlag}" />
-            <TextBlock Text="Включайте только для Electron/Chromium-приложений (например, Google Antigravity). Пароль в аргументы запуска никогда не подставляется."
+            <TextBlock Text="Включайте только для Electron/Chromium-приложений (например, Google Antigravity). Пароль в аргументы запуска не подставляется."
                        Classes="caption"
                        TextWrapping="Wrap" />
 
@@ -121,7 +123,7 @@
                     Background="{DynamicResource WarningSoftBrush}"
                     BorderBrush="{DynamicResource WarningBrush}"
                     IsVisible="{Binding ShowAuthChromiumWarning}">
-              <TextBlock Text="Внимание: выбранный прокси требует авторизацию, а флаг Chromium `--proxy-server` не обеспечивает универсальную автоматическую передачу логина/пароля без системного диалога или локального прокси-ретранслятора."
+              <TextBlock Text="Выбранный прокси требует авторизацию, а флаг Chromium `--proxy-server` не передаёт логин и пароль автоматически."
                          FontSize="12"
                          Foreground="{DynamicResource WarningBrush}"
                          TextWrapping="Wrap" />
@@ -132,31 +134,31 @@
                     Background="{DynamicResource WarningSoftBrush}"
                     BorderBrush="{DynamicResource WarningBrush}"
                     IsVisible="{Binding ShowNonChromiumFlagWarning}">
-              <TextBlock Text="Для указанного исполняемого файла не подтверждён стек Electron/Chromium — включение `--proxy-server` может не сработать."
+              <TextBlock Text="Для указанного исполняемого файла не подтверждён стек Electron/Chromium — флаг `--proxy-server` может не сработать."
                          FontSize="12"
                          Foreground="{DynamicResource WarningBrush}"
                          TextWrapping="Wrap" />
             </Border>
 
             <StackPanel Spacing="4">
-              <TextBlock Text="Связанные имена процессов (для предупреждения об уже открытом окне, через запятую)"
-                         FontSize="12.5"
+              <TextBlock Text="Связанные имена процессов (через запятую)"
+                         FontSize="12"
                          Foreground="{DynamicResource TextSecondaryBrush}" />
               <TextBox Text="{Binding RelatedProcessNamesText}" PlaceholderText="Например: Claude или ChatGPT, Codex" />
             </StackPanel>
           </StackPanel>
         </Border>
 
-        <!-- Секция CLI (дополнительный режим) -->
+        <!-- Секция CLI -->
         <Border Classes="card" IsVisible="{Binding IsCliMode}">
-          <StackPanel Spacing="10">
-            <TextBlock Text="Параметры интерактивного CLI-терминала" FontWeight="SemiBold" />
+          <StackPanel Spacing="8">
+            <TextBlock Text="Параметры CLI-терминала" FontWeight="SemiBold" />
             <CheckBox Content="Запускать в отдельном интерактивном терминале" IsChecked="{Binding LaunchInTerminal}" />
             <CheckBox Content="Не закрывать терминал после завершения команды (-NoExit)"
                       IsChecked="{Binding KeepTerminalOpen}"
                       IsEnabled="{Binding LaunchInTerminal}" />
-            <StackPanel Spacing="6">
-              <TextBlock Text="Терминал для этого профиля" FontSize="12.5" />
+            <StackPanel Spacing="5">
+              <TextBlock Text="Терминал для этого профиля" FontSize="12" />
               <ComboBox SelectedIndex="{Binding TerminalOverrideIndex}" HorizontalAlignment="Stretch">
                 <ComboBoxItem Content="Как в общих настройках" />
                 <ComboBoxItem Content="Windows Terminal (wt.exe)" />
@@ -167,34 +169,34 @@
           </StackPanel>
         </Border>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="5">
           <TextBlock Text="Переопределение NO_PROXY (опционально)" FontWeight="Medium" />
           <TextBox Text="{Binding NoProxyOverride}" PlaceholderText="Оставьте пустым для использования NO_PROXY из профиля прокси" />
         </StackPanel>
 
         <!-- Дополнительные переменные окружения -->
         <Border Classes="card">
-          <StackPanel Spacing="10">
-            <DockPanel LastChildFill="False">
-              <TextBlock Text="Дополнительные переменные окружения процесса"
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBlock Text="Дополнительные переменные окружения"
                          FontWeight="SemiBold"
                          VerticalAlignment="Center" />
-              <Button DockPanel.Dock="Right"
-                      Content="+ Добавить переменную"
+              <Button Grid.Column="1"
+                      Content="+ Переменная"
                       Classes="secondary"
                       Command="{Binding AddEnvVarCommand}" />
-            </DockPanel>
+            </Grid>
 
             <ItemsControl ItemsSource="{Binding EnvironmentVariables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvVarRowViewModel">
-                  <Grid ColumnDefinitions="180,*,Auto,Auto" ColumnSpacing="8" Margin="0,4">
+                  <Grid ColumnDefinitions="*,1.3*,Auto,Auto" ColumnSpacing="8" Margin="0,3">
                     <TextBox Text="{Binding Key}" PlaceholderText="КЛЮЧ" />
                     <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Значение" />
                     <CheckBox Grid.Column="2" Content="Секрет" IsChecked="{Binding IsSecret}" VerticalAlignment="Center" />
                     <Button Grid.Column="3"
                             Content="✕"
-                            Classes="subtle"
+                            Classes="icon-btn"
                             Command="{Binding RemoveCommand}" />
                   </Grid>
                 </DataTemplate>
@@ -203,13 +205,12 @@
           </StackPanel>
         </Border>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="5">
           <TextBlock Text="Заметки (опционально)" FontWeight="Medium" />
-          <TextBox Text="{Binding Notes}" AcceptsReturn="True" Height="64" TextWrapping="Wrap" />
+          <TextBox Text="{Binding Notes}" AcceptsReturn="True" Height="58" TextWrapping="Wrap" />
         </StackPanel>
 
         <Border Classes="card"
-                Padding="12"
                 Background="{DynamicResource ErrorSoftBrush}"
                 BorderBrush="{DynamicResource ErrorBrush}"
                 IsVisible="{Binding ValidationError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">

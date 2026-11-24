@@ -220,6 +220,105 @@ public sealed class ProcessLaunchIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task LaunchAsync_ChildSurvivesLauncherDisposalAndRetainsProxyEnvironment()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ProxyDockTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        Process? childProc = null;
+        try
+        {
+            var (winProxyEnableBefore, winProxyServerBefore) = ReadWindowsInternetSettings();
+            var beforeFile = Path.Combine(tempRoot, "before-dispose.json");
+            var afterFile = Path.Combine(tempRoot, "after-dispose.json");
+            var testChildExe = TestPaths.LocateTestChildExecutable();
+
+            int childPid;
+            using (var scope = new TempTestScope())
+            {
+                var proxyService = scope.Services.GetRequiredService<IProxyProfileService>();
+                var appService = scope.Services.GetRequiredService<IApplicationProfileService>();
+                var launcher = scope.Services.GetRequiredService<IApplicationLauncher>();
+                var tracker = scope.Services.GetRequiredService<IProcessTracker>();
+
+                var proxy = await proxyService.SaveAsync(new ProxyProfile
+                {
+                    Name = "Persistent Proxy",
+                    Host = "127.0.0.1",
+                    Port = 8877,
+                    NoProxy = "localhost,127.0.0.1",
+                    IsDefault = true
+                });
+
+                var app = await appService.SaveAsync(new ApplicationProfile
+                {
+                    Name = "Detached Child Test",
+                    LaunchKind = LaunchKind.Desktop,
+                    ExecutableOrCommand = testChildExe,
+                    WorkingDirectory = tempRoot,
+                    Arguments = $"--output \"{beforeFile}\" --post-sleep-output \"{afterFile}\" --sleep-ms 1200",
+                    ProxyMode = ProxyAssignmentMode.Specific,
+                    ProxyProfileId = proxy.Id,
+                    UseChromiumProxyFlag = true
+                });
+
+                var result = await launcher.LaunchAsync(new LaunchRequest { Application = app, IgnoreAlreadyRunningWarning = true });
+                Assert.True(result.Status is LaunchStatus.Started or LaunchStatus.StartedWithWarning);
+                Assert.NotNull(result.ProcessId);
+                childPid = result.ProcessId!.Value;
+
+                await WaitForChildOutputAsync(beforeFile);
+                Assert.Contains(tracker.ActiveProcesses, p => p.ProcessId == childPid);
+                childProc = Process.GetProcessById(childPid);
+            }
+
+            // После полного освобождения ServiceProvider и WindowsProcessTracker дочерний процесс должен жить дальше
+            Assert.False(childProc.HasExited);
+
+            var afterData = await WaitForChildOutputAsync(afterFile);
+            Assert.Equal(childPid, afterData.ProcessId);
+            Assert.Equal("http://127.0.0.1:8877", afterData.Environment["HTTP_PROXY"]);
+            Assert.Equal("http://127.0.0.1:8877", afterData.Environment["HTTPS_PROXY"]);
+            Assert.Equal("http://127.0.0.1:8877", afterData.Environment["ALL_PROXY"]);
+            Assert.Equal("localhost,127.0.0.1", afterData.Environment["NO_PROXY"]);
+            Assert.Contains("--proxy-server=http://127.0.0.1:8877", afterData.Args);
+
+            var (winProxyEnableAfter, winProxyServerAfter) = ReadWindowsInternetSettings();
+            Assert.Equal(winProxyEnableBefore, winProxyEnableAfter);
+            Assert.Equal(winProxyServerBefore, winProxyServerAfter);
+        }
+        finally
+        {
+            if (childProc is not null)
+            {
+                try
+                {
+                    if (!childProc.HasExited)
+                    {
+                        childProc.Kill();
+                    }
+                }
+                catch
+                {
+                }
+
+                childProc.Dispose();
+            }
+
+            try
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, recursive: true);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private static async Task<ChildOutput> WaitForChildOutputAsync(string filePath)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

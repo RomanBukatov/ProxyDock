@@ -9,7 +9,7 @@ public sealed class AppSettings
 {
     public AppThemeMode Theme { get; set; } = AppThemeMode.Dark;
     public string Language { get; set; } = "ru";
-    public bool MinimizeToTray { get; set; } = true;
+    public bool MinimizeToTray { get; set; } = false;
     public bool StartMinimized { get; set; }
     public bool RunAtWindowsStartup { get; set; }
     public Guid? DefaultProxyId { get; set; }

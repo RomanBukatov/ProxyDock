@@ -8,14 +8,15 @@ using ProxyDock.Core.Models;
 namespace ProxyDock.App.Services;
 
 /// <summary>
-/// Управляет иконкой в системном трее и быстрым запуском сохранённых программ.
-/// Полный выход завершает только ProxyDock и не затрагивает запущенные приложения.
+/// Управляет необязательной иконкой в системном трее и быстрым запуском сохранённых программ.
+/// По умолчанию иконка не создаётся, а полный выход завершает только ProxyDock без влияния на запущенные приложения.
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
     private readonly IApplicationProfileService _appService;
     private readonly IApplicationLauncher _launcher;
     private readonly ILocalizationService _loc;
+    private Application? _app;
     private TrayIcon? _trayIcon;
     private WindowIcon? _windowIcon;
     private Action? _showMainWindowAction;
@@ -35,31 +36,54 @@ public sealed class TrayIconService : IDisposable
         _loc.PropertyChanged += OnLocalizationChanged;
     }
 
-    public void Initialize(
+    public bool IsEnabled => _trayIcon is not null;
+
+    public void Configure(
         Application app,
         Action showMainWindow,
         Action openSettings,
         Action exitApp,
         Action<ApplicationProfile, LaunchResult>? onLaunchResult = null)
     {
+        _app = app;
         _showMainWindowAction = showMainWindow;
         _openSettingsAction = openSettings;
         _exitAction = exitApp;
         _launchNotificationAction = onLaunchResult;
+    }
 
-        using var iconStream = AssetLoader.Open(new Uri("avares://ProxyDock/Assets/proxydock.ico"));
-        _windowIcon = new WindowIcon(iconStream);
-
-        _trayIcon = new TrayIcon
+    public void SetEnabled(bool enabled)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
         {
-            Icon = _windowIcon,
-            ToolTipText = "ProxyDock — Desktop Proxy Launcher",
-            IsVisible = true
-        };
-        _trayIcon.Clicked += (_, _) => _showMainWindowAction?.Invoke();
+            Dispatcher.UIThread.Post(() => SetEnabled(enabled));
+            return;
+        }
 
-        TrayIcon.SetIcons(app, [_trayIcon]);
-        _ = RefreshMenuAsync();
+        if (enabled)
+        {
+            if (_app is null || _trayIcon is not null)
+            {
+                return;
+            }
+
+            using var iconStream = AssetLoader.Open(new Uri("avares://ProxyDock/Assets/proxydock.ico"));
+            _windowIcon = new WindowIcon(iconStream);
+
+            _trayIcon = new TrayIcon
+            {
+                Icon = _windowIcon,
+                ToolTipText = "ProxyDock",
+                IsVisible = true
+            };
+            _trayIcon.Clicked += (_, _) => _showMainWindowAction?.Invoke();
+
+            TrayIcon.SetIcons(_app, [_trayIcon]);
+            _ = RefreshMenuAsync();
+            return;
+        }
+
+        RemoveTrayIcon();
     }
 
     public async Task RefreshMenuAsync()
@@ -131,8 +155,49 @@ public sealed class TrayIconService : IDisposable
         });
     }
 
-    private void OnDataChanged(object? sender, EventArgs e) => _ = RefreshMenuAsync();
-    private void OnLocalizationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => _ = RefreshMenuAsync();
+    private void RemoveTrayIcon()
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.IsVisible = false;
+            if (_app is not null)
+            {
+                TrayIcon.SetIcons(_app, new TrayIcons());
+            }
+
+            _trayIcon.Dispose();
+        }
+        catch
+        {
+            // Ошибка очистки иконки трея при завершении приложения не должна прерывать выход
+        }
+        finally
+        {
+            _trayIcon = null;
+            _windowIcon = null;
+        }
+    }
+
+    private void OnDataChanged(object? sender, EventArgs e)
+    {
+        if (_trayIcon is not null)
+        {
+            _ = RefreshMenuAsync();
+        }
+    }
+
+    private void OnLocalizationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_trayIcon is not null)
+        {
+            _ = RefreshMenuAsync();
+        }
+    }
 
     public void Dispose()
     {
@@ -141,11 +206,27 @@ public sealed class TrayIconService : IDisposable
 
         if (_trayIcon is not null)
         {
-            _trayIcon.IsVisible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                RemoveTrayIcon();
+            }
+            else
+            {
+                try
+                {
+                    _trayIcon.IsVisible = false;
+                    _trayIcon.Dispose();
+                }
+                catch
+                {
+                    // Игнорируем при завершении из не-UI потока
+                }
+                finally
+                {
+                    _trayIcon = null;
+                    _windowIcon = null;
+                }
+            }
         }
-
-        _windowIcon = null;
     }
 }

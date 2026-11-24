@@ -38,10 +38,16 @@ public sealed class PersistenceAndSecurityTests
             UseChromiumProxyFlag = true
         });
 
+        var defaultSettings = new AppSettings();
+        Assert.False(defaultSettings.MinimizeToTray);
+        Assert.False(defaultSettings.StartMinimized);
+        Assert.False(defaultSettings.RunAtWindowsStartup);
+
         var settings = await settingsService.GetAsync();
+        Assert.False(settings.MinimizeToTray);
         settings.Theme = AppThemeMode.Light;
         settings.Language = "en";
-        settings.MinimizeToTray = false;
+        settings.MinimizeToTray = true;
         settings.DefaultProxyId = proxy.Id;
         await settingsService.SaveAsync(settings);
 
@@ -68,7 +74,11 @@ public sealed class PersistenceAndSecurityTests
         var loadedSettings = await settingsService.GetAsync();
         Assert.Equal(AppThemeMode.Light, loadedSettings.Theme);
         Assert.Equal("en", loadedSettings.Language);
-        Assert.False(loadedSettings.MinimizeToTray);
+        Assert.True(loadedSettings.MinimizeToTray);
+
+        loadedSettings.MinimizeToTray = false;
+        await settingsService.SaveAsync(loadedSettings);
+        Assert.False((await settingsService.GetAsync()).MinimizeToTray);
 
         // Проверяем удаление секрета
         await proxyService.DeleteAsync(proxy.Id);

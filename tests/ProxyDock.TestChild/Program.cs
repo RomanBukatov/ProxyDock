@@ -27,6 +27,7 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         string? outputPath = null;
+        string? postSleepOutputPath = null;
         var sleepMs = 0;
 
         for (var i = 0; i < args.Length; i++)
@@ -35,12 +36,33 @@ internal static class Program
             {
                 outputPath = args[i + 1];
             }
+            else if (args[i] == "--post-sleep-output" && i + 1 < args.Length)
+            {
+                postSleepOutputPath = args[i + 1];
+            }
             else if (args[i] == "--sleep-ms" && i + 1 < args.Length && int.TryParse(args[i + 1], out var ms))
             {
                 sleepMs = ms;
             }
         }
 
+        await WriteReportAsync(args, outputPath);
+
+        if (sleepMs > 0)
+        {
+            await Task.Delay(sleepMs);
+        }
+
+        if (!string.IsNullOrWhiteSpace(postSleepOutputPath))
+        {
+            await WriteReportAsync(args, postSleepOutputPath);
+        }
+
+        return 0;
+    }
+
+    private static async Task WriteReportAsync(string[] args, string? outputPath)
+    {
         var env = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var key in InspectedKeys)
         {
@@ -77,12 +99,5 @@ internal static class Program
         {
             Console.WriteLine(json);
         }
-
-        if (sleepMs > 0)
-        {
-            await Task.Delay(sleepMs);
-        }
-
-        return 0;
     }
 }

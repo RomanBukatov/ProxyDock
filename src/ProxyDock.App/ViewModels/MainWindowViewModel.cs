@@ -9,8 +9,8 @@ namespace ProxyDock.App.ViewModels;
 
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
-    private readonly IProxyProfileService _proxyService;
     private readonly IConfigDiagnosticsStore _diagnostics;
+    private readonly ISettingsService _settingsService;
 
     [ObservableProperty]
     private int _selectedNavIndex;
@@ -19,7 +19,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private object? _currentPage;
 
     [ObservableProperty]
-    private string _defaultProxyText = string.Empty;
+    private bool _isTrayEnabled;
 
     [ObservableProperty]
     private bool _bannerVisible;
@@ -35,27 +35,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel(
         ILocalizationService loc,
-        IProxyProfileService proxyService,
         IConfigDiagnosticsStore diagnostics,
         ISettingsService settingsService,
         AppNotificationService notifications,
-        Func<Action<string>, DashboardViewModel> dashboardFactory,
         ApplicationsViewModel applicationsVm,
         ProxyProfilesViewModel proxiesVm,
         LaunchHistoryViewModel historyVm,
         SettingsViewModel settingsVm)
         : base(loc)
     {
-        _proxyService = proxyService;
         _diagnostics = diagnostics;
+        _settingsService = settingsService;
 
-        Dashboard = dashboardFactory(NavigateByKey);
         Applications = applicationsVm;
+        Applications.NavigateAction = NavigateByKey;
         Proxies = proxiesVm;
         History = historyVm;
         Settings = settingsVm;
 
-        _currentPage = Dashboard;
+        _currentPage = Applications;
 
         notifications.NotificationRaised += (_, n) => Dispatcher.UIThread.Post(() =>
         {
@@ -65,17 +63,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             BannerVisible = true;
         });
 
-        _proxyService.ProxiesChanged += (_, _) => _ = UpdateDefaultProxyHeaderAsync();
         _diagnostics.WarningsChanged += (_, _) => ShowConfigWarningsIfAny();
-        settingsService.SettingsChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+        _settingsService.SettingsChanged += (_, updated) => Dispatcher.UIThread.Post(() =>
         {
+            IsTrayEnabled = updated.MinimizeToTray;
             OnPropertyChanged(nameof(BannerBackground));
             OnPropertyChanged(nameof(BannerBorder));
             _ = RefreshCurrentPageAsync();
         });
     }
 
-    public DashboardViewModel Dashboard { get; }
     public ApplicationsViewModel Applications { get; }
     public ProxyProfilesViewModel Proxies { get; }
     public LaunchHistoryViewModel History { get; }
@@ -103,39 +100,32 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(BannerBorder));
     }
 
-    public bool IsDashboardSelected
+    public bool IsApplicationsSelected
     {
         get => SelectedNavIndex == 0;
         set { if (value) SelectedNavIndex = 0; }
     }
 
-    public bool IsApplicationsSelected
+    public bool IsProxiesSelected
     {
         get => SelectedNavIndex == 1;
         set { if (value) SelectedNavIndex = 1; }
     }
 
-    public bool IsProxiesSelected
+    public bool IsHistorySelected
     {
         get => SelectedNavIndex == 2;
         set { if (value) SelectedNavIndex = 2; }
     }
 
-    public bool IsHistorySelected
+    public bool IsSettingsSelected
     {
         get => SelectedNavIndex == 3;
         set { if (value) SelectedNavIndex = 3; }
     }
 
-    public bool IsSettingsSelected
-    {
-        get => SelectedNavIndex == 4;
-        set { if (value) SelectedNavIndex = 4; }
-    }
-
     partial void OnSelectedNavIndexChanged(int value)
     {
-        OnPropertyChanged(nameof(IsDashboardSelected));
         OnPropertyChanged(nameof(IsApplicationsSelected));
         OnPropertyChanged(nameof(IsProxiesSelected));
         OnPropertyChanged(nameof(IsHistorySelected));
@@ -143,12 +133,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         CurrentPage = value switch
         {
-            0 => Dashboard,
-            1 => Applications,
-            2 => Proxies,
-            3 => History,
-            4 => Settings,
-            _ => Dashboard
+            1 => Proxies,
+            2 => History,
+            3 => Settings,
+            _ => Applications
         };
 
         _ = RefreshCurrentPageAsync();
@@ -156,13 +144,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public async Task InitializeAsync()
     {
+        var settings = await _settingsService.GetAsync();
+        IsTrayEnabled = settings.MinimizeToTray;
+
         await Task.WhenAll(
-            Dashboard.RefreshAsync(),
             Applications.RefreshAsync(),
             Proxies.RefreshAsync(),
             History.RefreshAsync(),
-            Settings.RefreshAsync(),
-            UpdateDefaultProxyHeaderAsync());
+            Settings.RefreshAsync());
 
         ShowConfigWarningsIfAny();
     }
@@ -171,10 +160,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         SelectedNavIndex = pageKey switch
         {
-            "Applications" => 1,
-            "Proxies" => 2,
-            "History" => 3,
-            "Settings" => 4,
+            "Proxies" => 1,
+            "History" => 2,
+            "Settings" => 3,
             _ => 0
         };
     }
@@ -184,28 +172,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         switch (SelectedNavIndex)
         {
             case 0:
-                await Dashboard.RefreshAsync();
-                break;
-            case 1:
                 await Applications.RefreshAsync();
                 break;
-            case 2:
+            case 1:
                 await Proxies.RefreshAsync();
                 break;
-            case 3:
+            case 2:
                 await History.RefreshAsync();
                 break;
-            case 4:
+            case 3:
                 await Settings.RefreshAsync();
                 break;
         }
-    }
-
-    private async Task UpdateDefaultProxyHeaderAsync()
-    {
-        var def = await _proxyService.GetDefaultAsync().ConfigureAwait(false);
-        var text = def is null ? Loc["NoDefaultProxy"] : $"{def.Name} ({def.Host}:{def.Port})";
-        await Dispatcher.UIThread.InvokeAsync(() => DefaultProxyText = text);
     }
 
     private void ShowConfigWarningsIfAny()

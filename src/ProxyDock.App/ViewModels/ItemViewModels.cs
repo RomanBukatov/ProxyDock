@@ -3,68 +3,65 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ProxyDock.Core.Enums;
+using ProxyDock.Core.Interfaces;
 using ProxyDock.Core.Models;
+using ProxyDock.Core.Services;
 
 namespace ProxyDock.App.ViewModels;
 
 /// <summary>
-/// Карточка предустановленного шаблона (в приоритете — desktop GUI-программы).
+/// Компактный элемент автоматически обнаруженного приложения.
 /// </summary>
-public sealed partial class TemplateCardViewModel : ObservableObject
+public sealed partial class DetectedAppItemViewModel : ObservableObject
 {
-    private readonly Func<TemplateCardViewModel, Task> _addAction;
+    private readonly Func<DetectedAppItemViewModel, Task> _addAction;
 
-    public TemplateCardViewModel(
+    public DetectedAppItemViewModel(
         string key,
         string name,
-        string subtitle,
-        bool isDetected,
-        string? detectedPath,
-        string stackSummary,
-        ProxyApplicabilityLevel applicability,
-        bool alreadyAdded,
         Bitmap? icon,
-        Func<TemplateCardViewModel, Task> addAction)
+        ILocalizationService loc,
+        Func<DetectedAppItemViewModel, Task> addAction)
     {
         Key = key;
         Name = name;
-        Subtitle = subtitle;
-        IsDetected = isDetected;
-        DetectedPath = detectedPath;
-        StackSummary = stackSummary;
-        Applicability = applicability;
-        AlreadyAdded = alreadyAdded;
         Icon = icon;
+        Loc = loc;
         _addAction = addAction;
     }
 
     public string Key { get; }
     public string Name { get; }
-    public string Subtitle { get; }
-    public bool IsDetected { get; }
-    public string? DetectedPath { get; }
-    public string StackSummary { get; }
-    public ProxyApplicabilityLevel Applicability { get; }
-    public bool AlreadyAdded { get; }
     public Bitmap? Icon { get; }
-
-    public string DetectionText => IsDetected ? "Найден на этом ПК" : "Не найден автоматически";
-    public string PathDisplay => IsDetected ? (DetectedPath ?? string.Empty) : "Можно добавить и указать .exe вручную";
-    public string ApplicabilityBadge => FormatHelpers.GetApplicabilityLabel(Applicability);
-    public IBrush ApplicabilityBackground => FormatHelpers.GetApplicabilityBg(Applicability);
-    public IBrush ApplicabilityForeground => FormatHelpers.GetApplicabilityFg(Applicability);
-    public string AddButtonText => AlreadyAdded ? "Добавить ещё" : "Добавить";
+    public ILocalizationService Loc { get; }
 
     [RelayCommand]
     private Task AddAsync() => _addAction(this);
 }
 
 /// <summary>
-/// Карточка приложения для Dashboard и списка Applications.
+/// Элемент выбора прокси по умолчанию в компактном селекторе главного экрана.
+/// </summary>
+public sealed class DefaultProxyOptionViewModel
+{
+    public DefaultProxyOptionViewModel(ProxyProfile profile)
+    {
+        Profile = profile;
+    }
+
+    public ProxyProfile Profile { get; }
+    public Guid Id => Profile.Id;
+    public string DisplayName => $"{Profile.Name} ({ProxyUriBuilder.FormatHost(Profile.Host)}:{Profile.Port})";
+    public IBrush StatusDotBrush => FormatHelpers.GetProxyStatusFg(Profile.LastCheckStatus);
+}
+
+/// <summary>
+/// Компактная строка добавленного приложения на главном экране.
 /// </summary>
 public sealed partial class AppCardViewModel : ObservableObject
 {
     private readonly Func<AppCardViewModel, bool, Task> _launchAction;
+    private readonly Func<AppCardViewModel, ProxyAssignmentMode, Guid?, Task> _assignProxyAction;
     private readonly Func<AppCardViewModel, Task> _editAction;
     private readonly Func<AppCardViewModel, Task> _duplicateAction;
     private readonly Func<AppCardViewModel, Task> _deleteAction;
@@ -78,7 +75,11 @@ public sealed partial class AppCardViewModel : ObservableObject
         bool targetFound,
         string? resolvedPath,
         DesktopAppStackInfo? stackInfo,
+        ILocalizationService loc,
+        IReadOnlyList<ProxyProfile> availableProxies,
+        ProxyProfile? defaultProxy,
         Func<AppCardViewModel, bool, Task> launchAction,
+        Func<AppCardViewModel, ProxyAssignmentMode, Guid?, Task> assignProxyAction,
         Func<AppCardViewModel, Task> editAction,
         Func<AppCardViewModel, Task> duplicateAction,
         Func<AppCardViewModel, Task> deleteAction,
@@ -91,7 +92,11 @@ public sealed partial class AppCardViewModel : ObservableObject
         TargetFound = targetFound;
         ResolvedPath = resolvedPath;
         StackInfo = stackInfo;
+        Loc = loc;
+        AvailableProxies = availableProxies;
+        DefaultProxy = defaultProxy;
         _launchAction = launchAction;
+        _assignProxyAction = assignProxyAction;
         _editAction = editAction;
         _duplicateAction = duplicateAction;
         _deleteAction = deleteAction;
@@ -105,37 +110,21 @@ public sealed partial class AppCardViewModel : ObservableObject
     public bool TargetFound { get; }
     public string? ResolvedPath { get; }
     public DesktopAppStackInfo? StackInfo { get; }
+    public ILocalizationService Loc { get; }
+    public IReadOnlyList<ProxyProfile> AvailableProxies { get; }
+    public ProxyProfile? DefaultProxy { get; }
 
     public string Name => Profile.Name;
     public bool IsDesktop => Profile.LaunchKind == LaunchKind.Desktop;
     public bool IsCli => Profile.LaunchKind == LaunchKind.Cli;
-    public string KindLabel => IsDesktop ? "Desktop GUI" : "CLI (терминал)";
+    public bool HasDesktopIcon => IsDesktop && Icon is not null;
+    public bool HasDesktopFallbackIcon => IsDesktop && Icon is null;
     public string TargetDisplay => string.IsNullOrWhiteSpace(ResolvedPath) ? Profile.ExecutableOrCommand : ResolvedPath;
-    public bool ShowChromiumBadge => IsDesktop && Profile.UseChromiumProxyFlag;
     public bool ShowMissingWarning => !TargetFound;
-    public string? CompatibilitySummary => !string.IsNullOrWhiteSpace(Profile.CompatibilityNote)
-        ? Profile.CompatibilityNote
-        : StackInfo?.Summary;
-    public bool HasCompatibilitySummary => !string.IsNullOrWhiteSpace(CompatibilitySummary);
-    public bool HasWorkingDir => !string.IsNullOrWhiteSpace(Profile.WorkingDirectory);
-    public string WorkingDirDisplay => Profile.WorkingDirectory ?? string.Empty;
-
-    public ProxyApplicabilityLevel Applicability
-        => Profile.ApplicabilityHint ?? StackInfo?.ApplicabilityLevel ?? ProxyApplicabilityLevel.Unverified;
-
-    public string ApplicabilityBadge => IsCli ? "CLI-окружение" : FormatHelpers.GetApplicabilityLabel(Applicability);
-    public IBrush ApplicabilityBackground => IsCli
-        ? FormatHelpers.Brush("InfoSoftBrush")
-        : FormatHelpers.GetApplicabilityBg(Applicability);
-    public IBrush ApplicabilityForeground => IsCli
-        ? FormatHelpers.Brush("InfoBrush")
-        : FormatHelpers.GetApplicabilityFg(Applicability);
-
     public IBrush ProxyStatusDotBrush => FormatHelpers.GetProxyStatusFg(ProxyStatus);
 
-    public string LastLaunchedText => Profile.LastLaunchedAtUtc is DateTimeOffset dt
-        ? $"Запускалось: {dt.ToLocalTime():dd.MM HH:mm}"
-        : "Ещё не запускалось";
+    public Task AssignProxyAsync(ProxyAssignmentMode mode, Guid? proxyId)
+        => _assignProxyAction(this, mode, proxyId);
 
     [RelayCommand]
     private Task LaunchAsync() => _launchAction(this, false);
@@ -157,7 +146,7 @@ public sealed partial class AppCardViewModel : ObservableObject
 }
 
 /// <summary>
-/// Карточка прокси-профиля с поддержкой отмены асинхронной проверки.
+/// Строка прокси-профиля с поддержкой отмены асинхронной проверки.
 /// </summary>
 public sealed partial class ProxyCardViewModel : ObservableObject
 {
@@ -187,6 +176,7 @@ public sealed partial class ProxyCardViewModel : ObservableObject
 
     public ProxyCardViewModel(
         ProxyProfile profile,
+        ILocalizationService loc,
         Func<ProxyCardViewModel, Task> testOrCancelAction,
         Func<ProxyCardViewModel, Task> editAction,
         Func<ProxyCardViewModel, Task> duplicateAction,
@@ -194,6 +184,7 @@ public sealed partial class ProxyCardViewModel : ObservableObject
         Func<ProxyCardViewModel, Task> deleteAction)
     {
         Profile = profile;
+        Loc = loc;
         _testOrCancelAction = testOrCancelAction;
         _editAction = editAction;
         _duplicateAction = duplicateAction;
@@ -201,17 +192,18 @@ public sealed partial class ProxyCardViewModel : ObservableObject
         _deleteAction = deleteAction;
 
         _status = profile.LastCheckStatus;
-        _statusMessage = profile.LastCheckMessage ?? "Проверка ещё не выполнялась.";
-        _latencyDisplay = profile.LastLatencyMs is long ms ? $"{ms} мс" : "—";
-        _externalIpDisplay = string.IsNullOrWhiteSpace(profile.LastExternalIp) ? "—" : profile.LastExternalIp;
+        _statusMessage = profile.LastCheckMessage ?? string.Empty;
+        _latencyDisplay = profile.LastLatencyMs is long ms ? $"{ms} мс" : string.Empty;
+        _externalIpDisplay = string.IsNullOrWhiteSpace(profile.LastExternalIp) ? string.Empty : profile.LastExternalIp;
         _checkedAtDisplay = profile.LastCheckedAtUtc is DateTimeOffset dt
             ? dt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
-            : "Не проверялся";
+            : string.Empty;
     }
 
     public ProxyProfile Profile { get; }
+    public ILocalizationService Loc { get; }
     public string Name => Profile.Name;
-    public string EndpointDisplay => $"{Core.Services.ProxyUriBuilder.FormatHost(Profile.Host)}:{Profile.Port}";
+    public string EndpointDisplay => $"{ProxyUriBuilder.FormatHost(Profile.Host)}:{Profile.Port}";
     public bool IsDefault => Profile.IsDefault;
     public bool HasAuth => Profile.HasCredentials || !string.IsNullOrWhiteSpace(Profile.Username);
     public string AuthBadgeText => string.IsNullOrWhiteSpace(Profile.Username)
@@ -221,13 +213,35 @@ public sealed partial class ProxyCardViewModel : ObservableObject
     public string StatusLabel => IsTesting ? "Проверка..." : FormatHelpers.GetProxyStatusLabel(Status);
     public IBrush StatusBackground => FormatHelpers.GetProxyStatusBg(IsTesting ? ProxyCheckStatus.Testing : Status);
     public IBrush StatusForeground => FormatHelpers.GetProxyStatusFg(IsTesting ? ProxyCheckStatus.Testing : Status);
+    public IBrush StatusDotBrush => StatusForeground;
     public string TestButtonText => IsTesting ? "Отмена" : "Проверить";
+    public bool HasStatusDetail => !string.IsNullOrWhiteSpace(StatusMessage);
+
+    public string MetricsDisplay
+    {
+        get
+        {
+            var parts = new List<string> { EndpointDisplay };
+            if (!string.IsNullOrWhiteSpace(LatencyDisplay))
+            {
+                parts.Add(LatencyDisplay);
+            }
+
+            if (!string.IsNullOrWhiteSpace(ExternalIpDisplay))
+            {
+                parts.Add($"IP {ExternalIpDisplay}");
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
 
     partial void OnIsTestingChanged(bool value)
     {
         OnPropertyChanged(nameof(StatusLabel));
         OnPropertyChanged(nameof(StatusBackground));
         OnPropertyChanged(nameof(StatusForeground));
+        OnPropertyChanged(nameof(StatusDotBrush));
         OnPropertyChanged(nameof(TestButtonText));
     }
 
@@ -236,7 +250,17 @@ public sealed partial class ProxyCardViewModel : ObservableObject
         OnPropertyChanged(nameof(StatusLabel));
         OnPropertyChanged(nameof(StatusBackground));
         OnPropertyChanged(nameof(StatusForeground));
+        OnPropertyChanged(nameof(StatusDotBrush));
     }
+
+    partial void OnStatusMessageChanged(string value)
+        => OnPropertyChanged(nameof(HasStatusDetail));
+
+    partial void OnLatencyDisplayChanged(string value)
+        => OnPropertyChanged(nameof(MetricsDisplay));
+
+    partial void OnExternalIpDisplayChanged(string value)
+        => OnPropertyChanged(nameof(MetricsDisplay));
 
     [RelayCommand]
     private Task TestOrCancelAsync() => _testOrCancelAction(this);
@@ -267,9 +291,9 @@ public sealed class HistoryItemViewModel
     public string KindLabel => Entry.LaunchKind == LaunchKind.Desktop ? "Desktop" : "CLI";
     public string StrategyLabel => Entry.Strategy switch
     {
-        LaunchRoutingStrategy.EnvironmentAndChromium => "Env + Chromium --proxy-server",
+        LaunchRoutingStrategy.EnvironmentAndChromium => "Env + --proxy-server",
         LaunchRoutingStrategy.EnvironmentOnly => "Env процесса",
-        LaunchRoutingStrategy.CliTerminal => "Интерактивный терминал",
+        LaunchRoutingStrategy.CliTerminal => "Терминал",
         LaunchRoutingStrategy.DirectNoProxy => "Без прокси",
         _ => Entry.Strategy.ToString()
     };
@@ -366,7 +390,7 @@ internal static class FormatHelpers
 
     public static string GetProxyStatusLabel(ProxyCheckStatus status) => status switch
     {
-        ProxyCheckStatus.Reachable => "Доступен (HTTPS)",
+        ProxyCheckStatus.Reachable => "Доступен",
         ProxyCheckStatus.TcpOnly => "Только TCP",
         ProxyCheckStatus.AuthRequired => "Нужна авторизация (407)",
         ProxyCheckStatus.Unreachable => "Недоступен",

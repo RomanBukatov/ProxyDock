@@ -49,6 +49,7 @@ public sealed partial class ProxyProfilesViewModel : ViewModelBase
             {
                 var card = new ProxyCardViewModel(
                     p,
+                    Loc,
                     TestOrCancelProxyAsync,
                     EditProxyAsync,
                     DuplicateProxyAsync,

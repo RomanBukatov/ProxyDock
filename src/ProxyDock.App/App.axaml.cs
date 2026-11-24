@@ -22,6 +22,8 @@ public partial class App : Application
     private EventWaitHandle? _activationEvent;
     private Thread? _activationListenerThread;
     private readonly CancellationTokenSource _appLifetimeCts = new();
+    private bool _minimizeToTrayEnabled;
+    private int _cleanupDone;
 
     public override void Initialize()
     {
@@ -35,9 +37,10 @@ public partial class App : Application
             var args = desktop.Args ?? [];
             var verifyStartup = args.Any(a => a.Equals("--verify-startup", StringComparison.OrdinalIgnoreCase));
             var startMinimizedArg = args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
+            var customDataDir = Program.TryParseDataDirArgument(args);
 
             var services = new ServiceCollection();
-            ConfigureServices(services);
+            ConfigureServices(services, customDataDir);
             _serviceProvider = services.BuildServiceProvider();
 
             var settingsService = _serviceProvider.GetRequiredService<ISettingsService>();
@@ -53,7 +56,7 @@ public partial class App : Application
             loggerProvider.SetMinimumLevel(settings.MinimumLogLevel);
 
             var mainVm = _serviceProvider.GetRequiredService<MainWindowViewModel>();
-            _mainWindow = new MainWindow(settingsService)
+            _mainWindow = new MainWindow
             {
                 DataContext = mainVm
             };
@@ -64,10 +67,9 @@ public partial class App : Application
             _trayService = _serviceProvider.GetRequiredService<TrayIconService>();
             var coordinator = _serviceProvider.GetRequiredService<AppLaunchCoordinator>();
 
-            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             desktop.Exit += (_, _) => CleanupOnExit();
 
-            _trayService.Initialize(
+            _trayService.Configure(
                 this,
                 ShowMainWindow,
                 () =>
@@ -88,10 +90,23 @@ public partial class App : Application
                     }
                 });
 
+            ApplyTrayAndShutdownMode(desktop, settings.MinimizeToTray);
+
+            settingsService.SettingsChanged += (_, updated) =>
+                Dispatcher.UIThread.Post(() => ApplyTrayAndShutdownMode(desktop, updated.MinimizeToTray));
+
+            _mainWindow.Closed += (_, _) =>
+            {
+                if (!_minimizeToTrayEnabled || _mainWindow.AllowExit)
+                {
+                    CleanupOnExit();
+                }
+            };
+
             desktop.MainWindow = _mainWindow;
             await mainVm.InitializeAsync();
 
-            if (!verifyStartup)
+            if (!verifyStartup && customDataDir is null)
             {
                 StartActivationListener();
             }
@@ -104,8 +119,14 @@ public partial class App : Application
                 return;
             }
 
-            if (!startMinimizedArg && !settings.StartMinimized)
+            var startHiddenInTray = settings.MinimizeToTray && (startMinimizedArg || settings.StartMinimized);
+            if (!startHiddenInTray)
             {
+                if (startMinimizedArg)
+                {
+                    _mainWindow.WindowState = WindowState.Minimized;
+                }
+
                 _mainWindow.Show();
             }
         }
@@ -113,9 +134,9 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    private static void ConfigureServices(IServiceCollection services, string? customDataRoot)
     {
-        services.AddProxyDockInfrastructure();
+        services.AddProxyDockInfrastructure(customDataRoot);
 
         services.AddSingleton<ILocalizationService, LocalizationService>();
         services.AddSingleton<ThemeService>();
@@ -130,19 +151,26 @@ public partial class App : Application
         services.AddSingleton<ProxyProfilesViewModel>();
         services.AddSingleton<LaunchHistoryViewModel>();
         services.AddSingleton<SettingsViewModel>();
-        services.AddSingleton<Func<Action<string>, DashboardViewModel>>(sp => navigate => new DashboardViewModel(
-            sp.GetRequiredService<ILocalizationService>(),
-            sp.GetRequiredService<IApplicationProfileService>(),
-            sp.GetRequiredService<IProxyProfileService>(),
-            sp.GetRequiredService<ILaunchHistoryRepository>(),
-            sp.GetRequiredService<IExecutableDiscoveryService>(),
-            sp.GetRequiredService<IconCacheService>(),
-            sp.GetRequiredService<IDialogService>(),
-            sp.GetRequiredService<AppLaunchCoordinator>(),
-            sp.GetRequiredService<AppNotificationService>(),
-            sp.GetRequiredService<IProxyConnectivityTester>(),
-            navigate));
         services.AddSingleton<MainWindowViewModel>();
+    }
+
+    private void ApplyTrayAndShutdownMode(IClassicDesktopStyleApplicationLifetime desktop, bool trayEnabled)
+    {
+        if (Volatile.Read(ref _cleanupDone) != 0)
+        {
+            return;
+        }
+
+        _minimizeToTrayEnabled = trayEnabled;
+        if (_mainWindow is not null)
+        {
+            _mainWindow.MinimizeToTrayOnClose = trayEnabled;
+        }
+
+        _trayService?.SetEnabled(trayEnabled);
+        desktop.ShutdownMode = trayEnabled
+            ? ShutdownMode.OnExplicitShutdown
+            : ShutdownMode.OnMainWindowClose;
     }
 
     private void ShowMainWindow()
@@ -182,15 +210,35 @@ public partial class App : Application
 
     private void CleanupOnExit()
     {
-        if (_appLifetimeCts.IsCancellationRequested)
+        if (Interlocked.Exchange(ref _cleanupDone, 1) != 0)
         {
             return;
         }
 
         _appLifetimeCts.Cancel();
-        _activationEvent?.Set();
+        try
+        {
+            _activationEvent?.Set();
+        }
+        catch
+        {
+            // Игнорируем при завершении
+        }
+
+        try
+        {
+            _activationListenerThread?.Join(TimeSpan.FromMilliseconds(200));
+        }
+        catch
+        {
+            // Игнорируем при завершении
+        }
+
+        _activationEvent?.Dispose();
+        _activationEvent = null;
         _trayService?.Dispose();
         _serviceProvider?.Dispose();
+        _appLifetimeCts.Dispose();
     }
 
     private void StartActivationListener()
@@ -202,14 +250,21 @@ public partial class App : Application
             {
                 while (!_appLifetimeCts.IsCancellationRequested)
                 {
-                    if (_activationEvent.WaitOne())
+                    try
                     {
-                        if (_appLifetimeCts.IsCancellationRequested)
+                        if (_activationEvent.WaitOne())
                         {
-                            break;
-                        }
+                            if (_appLifetimeCts.IsCancellationRequested)
+                            {
+                                break;
+                            }
 
-                        ShowMainWindow();
+                            ShowMainWindow();
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        break;
                     }
                 }
             })

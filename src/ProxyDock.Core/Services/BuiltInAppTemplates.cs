@@ -26,7 +26,7 @@ public static class BuiltInAppTemplates
     [
         new(
             GoogleAntigravityKey,
-            "Google Antigravity Desktop",
+            "Google Antigravity",
             "Win32 Electron / Chromium — подтверждённый сценарий (env + --proxy-server)",
             LaunchKind.Desktop,
             true,

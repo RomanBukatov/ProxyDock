@@ -30,7 +30,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private int _languageIndex;
 
     [ObservableProperty]
-    private bool _minimizeToTray = true;
+    private bool _minimizeToTray;
 
     [ObservableProperty]
     private bool _startMinimized;
@@ -148,7 +148,18 @@ public sealed partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    partial void OnMinimizeToTrayChanged(bool value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
+    partial void OnMinimizeToTrayChanged(bool value)
+    {
+        if (!_isLoading)
+        {
+            if (!value && StartMinimized)
+            {
+                StartMinimized = false;
+            }
+
+            _ = SaveCurrentSettingsAsync();
+        }
+    }
     partial void OnStartMinimizedChanged(bool value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
     partial void OnDefaultTerminalIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }
     partial void OnLogLevelIndexChanged(int value) { if (!_isLoading) _ = SaveCurrentSettingsAsync(); }

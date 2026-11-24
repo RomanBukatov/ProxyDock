@@ -1,49 +1,59 @@
 using Avalonia.Controls;
-using ProxyDock.Core.Interfaces;
 
 namespace ProxyDock.App.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly ISettingsService? _settingsService;
-
     public MainWindow()
     {
         InitializeComponent();
     }
 
-    public MainWindow(ISettingsService settingsService)
-        : this()
-    {
-        _settingsService = settingsService;
-    }
-
     public bool AllowExit { get; set; }
 
-    protected override async void OnClosing(WindowClosingEventArgs e)
+    public bool MinimizeToTrayOnClose { get; set; }
+
+    protected override void OnOpened(EventArgs e)
     {
-        if (!AllowExit && _settingsService is not null)
+        base.OnOpened(e);
+        FitToWorkingArea();
+    }
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        if (!AllowExit && MinimizeToTrayOnClose)
         {
             e.Cancel = true;
-            try
-            {
-                var settings = await _settingsService.GetAsync();
-                if (settings.MinimizeToTray)
-                {
-                    Hide();
-                    return;
-                }
-            }
-            catch
-            {
-                // При ошибке чтения настроек безопаснее выполнить штатный выход
-            }
-
-            AllowExit = true;
-            Close();
+            Hide();
             return;
         }
 
         base.OnClosing(e);
+    }
+
+    private void FitToWorkingArea()
+    {
+        var screen = Screens.ScreenFromWindow(this);
+        if (screen is null)
+        {
+            return;
+        }
+
+        var scaling = screen.Scaling > 0 ? screen.Scaling : 1.0;
+        var logicalWorkWidth = screen.WorkingArea.Width / scaling;
+        var logicalWorkHeight = screen.WorkingArea.Height / scaling;
+
+        var maxWidth = Math.Max(MinWidth, logicalWorkWidth * 0.92);
+        var maxHeight = Math.Max(MinHeight, logicalWorkHeight * 0.90);
+
+        if (Width > maxWidth)
+        {
+            Width = Math.Round(maxWidth);
+        }
+
+        if (Height > maxHeight)
+        {
+            Height = Math.Round(maxHeight);
+        }
     }
 }
