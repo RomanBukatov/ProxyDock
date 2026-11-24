@@ -19,19 +19,22 @@ public sealed class BuiltInTemplatesAndStackInspectionTests(ITestOutputHelper ou
         var antigravity = BuiltInAppTemplates.CreateGoogleAntigravity();
         Assert.Equal(LaunchKind.Desktop, antigravity.LaunchKind);
         Assert.True(antigravity.UseChromiumProxyFlag);
+        Assert.False(antigravity.UseNodeEnvProxy);
         Assert.Equal(ProxyApplicabilityLevel.Confirmed, antigravity.ApplicabilityHint);
         Assert.Contains("Antigravity", antigravity.RelatedProcessNames);
 
         var claude = BuiltInAppTemplates.CreateClaudeDesktop();
         Assert.Equal(LaunchKind.Desktop, claude.LaunchKind);
-        Assert.False(claude.UseChromiumProxyFlag); // Не включаем --proxy-server вслепую для MSIX
+        Assert.True(claude.UseChromiumProxyFlag);
+        Assert.True(claude.UseNodeEnvProxy);
         Assert.Equal(ProxyApplicabilityLevel.NeedsVerification, claude.ApplicabilityHint);
         Assert.Contains("Claude", claude.RelatedProcessNames);
 
         var codex = BuiltInAppTemplates.CreateCodexDesktop();
         Assert.Equal(LaunchKind.Desktop, codex.LaunchKind);
-        Assert.False(codex.UseChromiumProxyFlag);
-        Assert.Equal(ProxyApplicabilityLevel.NeedsVerification, codex.ApplicabilityHint);
+        Assert.True(codex.UseChromiumProxyFlag);
+        Assert.True(codex.UseNodeEnvProxy);
+        Assert.Equal(ProxyApplicabilityLevel.Confirmed, codex.ApplicabilityHint);
         Assert.Contains("ChatGPT", codex.RelatedProcessNames);
         Assert.Contains("Codex", codex.RelatedProcessNames);
 
@@ -179,5 +182,110 @@ public sealed class BuiltInTemplatesAndStackInspectionTests(ITestOutputHelper ou
 
         Assert.IsType<DesktopLaunchStrategy>(strategies.Single(s => s.CanHandle(desktopApp)));
         Assert.IsType<CliTerminalLaunchStrategy>(strategies.Single(s => s.CanHandle(cliApp)));
+    }
+
+    [Fact]
+    public async Task DesktopLaunchStrategy_BuildsConfirmedPlanForCodexAndCustomApp_WithChromiumAndNodeEnvProxy()
+    {
+        using var scope = new TempTestScope();
+        var strategies = scope.Services.GetServices<ILaunchStrategy>().ToList();
+        var desktopStrategy = strategies.OfType<DesktopLaunchStrategy>().Single();
+
+        var appDir = Path.Combine(scope.RootPath, "FakeOwlElectron");
+        Directory.CreateDirectory(appDir);
+        var exe = Path.Combine(appDir, "CustomOwlApp.exe");
+        File.WriteAllBytes(exe, [0x4D, 0x5A]);
+        File.WriteAllText(Path.Combine(appDir, "owl-shell-runtime.json"), "{}");
+
+        var proxy = new ProxyProfile
+        {
+            Name = "Local Test Proxy",
+            Host = "127.0.0.1",
+            Port = 8888,
+            NoProxy = "localhost,127.0.0.1,::1"
+        };
+
+        var app = new ApplicationProfile
+        {
+            Name = "Custom Owl App",
+            LaunchKind = LaunchKind.Desktop,
+            ExecutableOrCommand = exe,
+            UseChromiumProxyFlag = true,
+            UseNodeEnvProxy = true
+        };
+
+        var plan = await desktopStrategy.BuildPlanAsync(app, proxy, null, new AppSettings(), isDirectNoProxy: false);
+
+        Assert.Equal(LaunchRoutingStrategy.EnvironmentAndChromium, plan.Strategy);
+        Assert.Equal("http://127.0.0.1:8888", plan.EnvironmentSet["HTTP_PROXY"]);
+        Assert.Equal("http://127.0.0.1:8888", plan.EnvironmentSet["HTTPS_PROXY"]);
+        Assert.Equal("http://127.0.0.1:8888", plan.EnvironmentSet["ALL_PROXY"]);
+        Assert.Equal("localhost,127.0.0.1,::1", plan.EnvironmentSet["NO_PROXY"]);
+        Assert.Equal("1", plan.EnvironmentSet["NODE_USE_ENV_PROXY"]);
+        Assert.Contains("--proxy-server=http://127.0.0.1:8888", plan.Arguments);
+
+        // Явный --no-proxy-server не должен дублироваться автоматическим --proxy-server
+        app.Arguments = "--no-proxy-server";
+        var manualPlan = await desktopStrategy.BuildPlanAsync(app, proxy, null, new AppSettings(), isDirectNoProxy: false);
+        Assert.Contains("--no-proxy-server", manualPlan.Arguments);
+        Assert.DoesNotContain(manualPlan.Arguments, a => a.StartsWith("--proxy-server", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DesktopLaunchStrategy_KeepsClaudeDesktopAsNeedsVerification_WithChromiumAndNodeEnvProxy()
+    {
+        using var scope = new TempTestScope();
+        var strategies = scope.Services.GetServices<ILaunchStrategy>().ToList();
+        var desktopStrategy = strategies.OfType<DesktopLaunchStrategy>().Single();
+
+        var claudeDir = Path.Combine(scope.RootPath, "Claude_test");
+        Directory.CreateDirectory(claudeDir);
+        var exe = Path.Combine(claudeDir, "claude-desktop.exe");
+        File.WriteAllBytes(exe, [0x4D, 0x5A]);
+        File.WriteAllText(Path.Combine(claudeDir, "LICENSE.electron.txt"), "MIT");
+
+        var app = BuiltInAppTemplates.CreateClaudeDesktop(exe);
+        var proxy = new ProxyProfile { Name = "Loopback", Host = "127.0.0.1", Port = 8888 };
+
+        var plan = await desktopStrategy.BuildPlanAsync(app, proxy, null, new AppSettings(), isDirectNoProxy: false);
+
+        Assert.Equal(LaunchRoutingStrategy.EnvironmentAndChromium, plan.Strategy);
+        Assert.Equal(ProxyApplicabilityLevel.NeedsVerification, plan.ApplicabilityLevel);
+        Assert.Equal("1", plan.EnvironmentSet["NODE_USE_ENV_PROXY"]);
+        Assert.Contains("--proxy-server=http://127.0.0.1:8888", plan.Arguments);
+    }
+
+    [Fact]
+    public async Task CliTerminalLaunchStrategy_PropagatesNodeUseEnvProxyInScriptAndDirectRemoval()
+    {
+        using var scope = new TempTestScope();
+        var strategies = scope.Services.GetServices<ILaunchStrategy>().ToList();
+        var cliStrategy = strategies.OfType<CliTerminalLaunchStrategy>().Single();
+
+        var cmdPath = Path.Combine(scope.RootPath, "node-cli.cmd");
+        await File.WriteAllTextAsync(cmdPath, "@echo off\r\necho ok\r\n");
+
+        var app = new ApplicationProfile
+        {
+            Name = "Node CLI",
+            LaunchKind = LaunchKind.Cli,
+            ExecutableOrCommand = cmdPath,
+            WorkingDirectory = scope.RootPath,
+            LaunchInTerminal = true,
+            UseNodeEnvProxy = true
+        };
+
+        var proxy = new ProxyProfile { Name = "Loopback", Host = "127.0.0.1", Port = 8899 };
+
+        var proxiedPlan = await cliStrategy.BuildPlanAsync(app, proxy, null, new AppSettings(), isDirectNoProxy: false);
+        Assert.Equal("1", proxiedPlan.EnvironmentSet["NODE_USE_ENV_PROXY"]);
+        Assert.False(string.IsNullOrWhiteSpace(proxiedPlan.GeneratedScriptPath));
+        var proxiedScript = await File.ReadAllTextAsync(proxiedPlan.GeneratedScriptPath!);
+        Assert.Contains("'NODE_USE_ENV_PROXY', '1'", proxiedScript);
+
+        var directPlan = await cliStrategy.BuildPlanAsync(app, proxy, null, new AppSettings(), isDirectNoProxy: true);
+        Assert.Contains("NODE_USE_ENV_PROXY", directPlan.EnvironmentRemove);
+        var directScript = await File.ReadAllTextAsync(directPlan.GeneratedScriptPath!);
+        Assert.Contains("'NODE_USE_ENV_PROXY', $null", directScript);
     }
 }

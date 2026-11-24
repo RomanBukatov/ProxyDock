@@ -34,14 +34,14 @@ public static class BuiltInAppTemplates
         new(
             ClaudeDesktopKey,
             "Claude Desktop",
-            "MSIX Electron + cowork-svc — переменные окружения (Chromium-флаг опционально)",
+            "MSIX Electron + cowork-svc — env + NODE_USE_ENV_PROXY=1 + --proxy-server (требует проверки)",
             LaunchKind.Desktop,
             true,
             CreateClaudeDesktop),
         new(
             CodexDesktopKey,
             "Codex Desktop",
-            "MSIX Chromium/Owl + codex.exe + сервис — переменные окружения (проверить стек)",
+            "MSIX Chromium/Owl + codex.exe — подтверждённый сценарий (env + NODE_USE_ENV_PROXY=1 + --proxy-server)",
             LaunchKind.Desktop,
             true,
             CreateCodexDesktop)
@@ -86,13 +86,14 @@ public static class BuiltInAppTemplates
         LaunchKind = LaunchKind.Desktop,
         ExecutableOrCommand = resolvedExecutablePath ?? "claude-desktop.exe",
         ProxyMode = ProxyAssignmentMode.InheritDefault,
-        UseChromiumProxyFlag = false,
+        UseChromiumProxyFlag = true,
+        UseNodeEnvProxy = true,
         LaunchInTerminal = false,
         TemplateKey = ClaudeDesktopKey,
         ApplicabilityHint = ProxyApplicabilityLevel.NeedsVerification,
         RelatedProcessNames = ["Claude"],
-        CompatibilityNote = "MSIX Electron + служба cowork-svc.exe: запускается с переменными окружения; поддержка --proxy-server через MSIX App Execution Alias зависит от версии пакета и не гарантируется без проверки.",
-        Notes = "При первом запуске проверьте фактический трафик: Claude Desktop часто остаётся в системном трее (Claude.exe) и может игнорировать env при передаче управления существующему процессу."
+        CompatibilityNote = "MSIX Electron (Claude.exe) + служба cowork-svc.exe: передаются HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY, NODE_USE_ENV_PROXY=1 и --proxy-server=http://host:port. Маршрутизация NetworkService проверена технически, но полная работа чатов/Cowork требует пользовательской проверки.",
+        Notes = "Перед запуском через прокси полностью закройте Claude Desktop, включая значок в системном трее (Claude.exe). Фоновая служба Windows cowork-svc.exe работает отдельно от GUI-процесса."
     };
 
     public static ApplicationProfile CreateCodexDesktop(string? resolvedExecutablePath = null) => new()
@@ -101,13 +102,14 @@ public static class BuiltInAppTemplates
         LaunchKind = LaunchKind.Desktop,
         ExecutableOrCommand = resolvedExecutablePath ?? "chatgpt-desktop.exe",
         ProxyMode = ProxyAssignmentMode.InheritDefault,
-        UseChromiumProxyFlag = false,
+        UseChromiumProxyFlag = true,
+        UseNodeEnvProxy = true,
         LaunchInTerminal = false,
         TemplateKey = CodexDesktopKey,
-        ApplicabilityHint = ProxyApplicabilityLevel.NeedsVerification,
+        ApplicabilityHint = ProxyApplicabilityLevel.Confirmed,
         RelatedProcessNames = ["ChatGPT", "Codex"],
-        CompatibilityNote = "MSIX (ChatGPT.exe / Codex.exe) + встроенный codex.exe + служба codex-windows-sandbox-service: передаются переменные окружения; фоновые службы Windows и изоляция MSIX могут требовать дополнительной проверки (или %USERPROFILE%\\.codex\\.env).",
-        Notes = "Если в интерфейсе чаты зависают при выключенном системном прокси, проверьте поведение с включённым --proxy-server или настройкой %USERPROFILE%\\.codex\\.env."
+        CompatibilityNote = "MSIX Chromium/Owl (ChatGPT.exe) + codex.exe app-server: подтверждённый сценарий через MSIX App Execution Alias с HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY, NODE_USE_ENV_PROXY=1 и --proxy-server=http://host:port (без системного прокси Windows).",
+        Notes = "Подтверждено при выключенном системном прокси Windows. Перед сменой прокси полностью закройте ChatGPT.exe/codex.exe. Фоновая служба Windows codex-windows-sandbox-service.exe запускается отдельно от GUI-процесса."
     };
 
     public static ApplicationProfile CreateClaudeCodeCli(string? workingDirectory = null) => new()

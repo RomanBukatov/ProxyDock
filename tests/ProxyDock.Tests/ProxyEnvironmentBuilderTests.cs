@@ -52,4 +52,68 @@ public sealed class ProxyEnvironmentBuilderTests
         Assert.Contains("all_proxy", delta.Remove);
         Assert.Equal("1", delta.Set["KEEP_ME"]);
     }
+
+    [Fact]
+    public void Build_SetsNodeUseEnvProxy_WhenEnabledAndProxyActive()
+    {
+        var proxy = new ProxyProfile { Host = "127.0.0.1", Port = 7890 };
+
+        var delta = ProxyEnvironmentBuilder.Build(
+            proxy,
+            credentials: null,
+            noProxyOverride: null,
+            customVariables: null,
+            isDirectNoProxy: false,
+            useNodeEnvProxy: true);
+
+        Assert.Equal("1", delta.Set[ProxyEnvironmentBuilder.NodeUseEnvProxyVariableName]);
+        Assert.Empty(delta.Remove);
+    }
+
+    [Fact]
+    public void Build_DoesNotSetNodeUseEnvProxy_WhenDisabled()
+    {
+        var proxy = new ProxyProfile { Host = "127.0.0.1", Port = 7890 };
+
+        var delta = ProxyEnvironmentBuilder.Build(
+            proxy,
+            credentials: null,
+            noProxyOverride: null,
+            customVariables: null,
+            isDirectNoProxy: false,
+            useNodeEnvProxy: false);
+
+        Assert.False(delta.Set.ContainsKey(ProxyEnvironmentBuilder.NodeUseEnvProxyVariableName));
+    }
+
+    [Fact]
+    public void Build_RemovesNodeUseEnvProxy_WhenDirectNoProxyAndEnabled()
+    {
+        var delta = ProxyEnvironmentBuilder.Build(
+            proxy: new ProxyProfile { Host = "127.0.0.1", Port = 7890 },
+            credentials: null,
+            noProxyOverride: null,
+            customVariables: null,
+            isDirectNoProxy: true,
+            useNodeEnvProxy: true);
+
+        Assert.Equal(7, delta.Remove.Count);
+        Assert.Contains(ProxyEnvironmentBuilder.NodeUseEnvProxyVariableName, delta.Remove);
+    }
+
+    [Fact]
+    public void Build_AllowsCustomEnvironmentVariableToOverrideNodeUseEnvProxy()
+    {
+        var proxy = new ProxyProfile { Host = "127.0.0.1", Port = 7890 };
+
+        var delta = ProxyEnvironmentBuilder.Build(
+            proxy,
+            credentials: null,
+            noProxyOverride: null,
+            customVariables: [new EnvironmentVariableEntry { Key = "NODE_USE_ENV_PROXY", Value = "0" }],
+            isDirectNoProxy: false,
+            useNodeEnvProxy: true);
+
+        Assert.Equal("0", delta.Set["NODE_USE_ENV_PROXY"]);
+    }
 }

@@ -28,12 +28,15 @@ public static class ProxyEnvironmentBuilder
         "no_proxy"
     ];
 
+    public const string NodeUseEnvProxyVariableName = "NODE_USE_ENV_PROXY";
+
     public static EnvironmentDelta Build(
         ProxyProfile? proxy,
         ProxyCredentials? credentials,
         string? noProxyOverride,
         IEnumerable<EnvironmentVariableEntry>? customVariables,
-        bool isDirectNoProxy)
+        bool isDirectNoProxy,
+        bool useNodeEnvProxy = false)
     {
         var set = new Dictionary<string, string>(StringComparer.Ordinal);
         var remove = new List<string>();
@@ -42,6 +45,10 @@ public static class ProxyEnvironmentBuilder
         if (isDirectNoProxy || proxy is null)
         {
             remove.AddRange(ProxyVariableNames);
+            if (useNodeEnvProxy)
+            {
+                remove.Add(NodeUseEnvProxyVariableName);
+            }
             if (!string.IsNullOrWhiteSpace(noProxyOverride))
             {
                 var trimmedNoProxy = noProxyOverride.Trim();
@@ -55,6 +62,11 @@ public static class ProxyEnvironmentBuilder
             foreach (var varName in ProxyVariableNames)
             {
                 set[varName] = runtimeUri;
+            }
+
+            if (useNodeEnvProxy)
+            {
+                set[NodeUseEnvProxyVariableName] = "1";
             }
 
             if (credentials is not null && !string.IsNullOrEmpty(credentials.Password))

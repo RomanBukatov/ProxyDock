@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using ProxyDock.Core.Interfaces;
 using ProxyDock.Core.Models;
+using ProxyDock.Core.Services;
 using ProxyDock.Core.Validation;
 
 namespace ProxyDock.Infrastructure.Persistence;
@@ -59,6 +60,7 @@ public sealed class ConfigExportService : IConfigExportService
             ProxyMode = a.ProxyMode,
             ProxyProfileId = a.ProxyProfileId,
             UseChromiumProxyFlag = a.UseChromiumProxyFlag,
+            UseNodeEnvProxy = a.UseNodeEnvProxy,
             LaunchInTerminal = a.LaunchInTerminal,
             KeepTerminalOpen = a.KeepTerminalOpen,
             TerminalOverride = a.TerminalOverride,
@@ -100,6 +102,22 @@ public sealed class ConfigExportService : IConfigExportService
         var json = await File.ReadAllTextAsync(filePath, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
         var bundle = JsonSerializer.Deserialize<ExportBundle>(json, JsonConfigStore.DefaultSerializerOptions)
             ?? throw new InvalidDataException("Файл экспорта не содержит корректных данных ProxyDock.");
+
+        if (bundle.SchemaVersion < ApplicationProfileMigrator.LatestApplicationsSchemaVersion && bundle.Applications.Count > 0)
+        {
+            List<JsonElement>? rawAppElements = null;
+            using (var doc = JsonDocument.Parse(json))
+            {
+                if (doc.RootElement.ValueKind == JsonValueKind.Object
+                    && doc.RootElement.TryGetProperty("applications", out var appsElem)
+                    && appsElem.ValueKind == JsonValueKind.Array)
+                {
+                    rawAppElements = appsElem.EnumerateArray().Select(e => e.Clone()).ToList();
+                }
+            }
+
+            ApplicationProfileMigrator.MigrateFromSchemaVersion(bundle.SchemaVersion, bundle.Applications, rawAppElements);
+        }
 
         var warnings = new List<string>();
 

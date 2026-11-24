@@ -125,7 +125,7 @@ internal static class StringsRu
         ["BtnExportConfig"] = "Экспорт JSON...",
         ["BtnImportConfig"] = "Импорт JSON...",
         ["SettingsLimitationsTitle"] = "Принцип работы",
-        ["SettingsLimitationsBody"] = "ProxyDock задаёт переменные окружения процесса и опциональный флаг --proxy-server только для запускаемого приложения. Системный прокси Windows, реестр и глобальные сетевые настройки не изменяются.",
+        ["SettingsLimitationsBody"] = "ProxyDock задаёт переменные окружения процесса (включая опциональный NODE_USE_ENV_PROXY=1) и опциональный флаг --proxy-server только для запускаемого приложения. Системный прокси Windows, реестр и глобальные сетевые настройки не изменяются.",
 
         ["SystemProxyUnchangedShort"] = "Системный прокси Windows не изменяется",
         ["TrayActiveBadge"] = "Трей активен",

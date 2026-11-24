@@ -73,7 +73,8 @@ public sealed class DesktopLaunchStrategy : ILaunchStrategy
             credentials,
             application.NoProxyOverride,
             application.CustomEnvironmentVariables,
-            isDirectNoProxy);
+            isDirectNoProxy,
+            application.UseNodeEnvProxy);
 
         var stack = discovery.StackInfo ?? _discovery.InspectExecutable(discovery.ResolvedPath, application.TemplateKey);
         var warnings = new List<string>();
@@ -84,7 +85,9 @@ public sealed class DesktopLaunchStrategy : ILaunchStrategy
         if (!isDirectNoProxy && proxy is not null && application.UseChromiumProxyFlag)
         {
             strategy = LaunchRoutingStrategy.EnvironmentAndChromium;
-            var hasManualFlag = parsedArgs.Any(a => a.StartsWith("--proxy-server", StringComparison.OrdinalIgnoreCase));
+            var hasManualFlag = parsedArgs.Any(a =>
+                a.StartsWith("--proxy-server", StringComparison.OrdinalIgnoreCase)
+                || a.Equals("--no-proxy-server", StringComparison.OrdinalIgnoreCase));
             if (!hasManualFlag)
             {
                 // Никогда не передаём логин и пароль в аргументах командной строки --proxy-server.
@@ -102,6 +105,11 @@ public sealed class DesktopLaunchStrategy : ILaunchStrategy
                 warnings.Add(
                     "Для выбранного исполняемого файла не подтверждена архитектура Electron/Chromium: параметр `--proxy-server` может быть проигнорирован или вызвать ошибку запуска.");
             }
+        }
+        else if (!isDirectNoProxy && proxy is not null && !application.UseChromiumProxyFlag && stack.SupportsChromiumProxyFlag)
+        {
+            warnings.Add(
+                "Обнаружен стек Electron/Chromium, но флаг `--proxy-server` отключён: при выключенном системном прокси Windows сетевой процесс Chromium (NetworkService) обычно игнорирует HTTP_PROXY/HTTPS_PROXY.");
         }
 
         if (!isDirectNoProxy && proxy is not null)

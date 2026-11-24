@@ -13,7 +13,7 @@ namespace ProxyDock.Infrastructure.Persistence;
 /// </summary>
 public sealed class JsonConfigStore
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {

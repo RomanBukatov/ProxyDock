@@ -125,7 +125,7 @@ internal static class StringsEn
         ["BtnExportConfig"] = "Export JSON...",
         ["BtnImportConfig"] = "Import JSON...",
         ["SettingsLimitationsTitle"] = "How ProxyDock Works",
-        ["SettingsLimitationsBody"] = "ProxyDock applies per-process environment variables and optional --proxy-server flags only to launched child processes. Windows system proxy, registry, and global network settings are never modified.",
+        ["SettingsLimitationsBody"] = "ProxyDock applies per-process environment variables (including optional NODE_USE_ENV_PROXY=1) and optional --proxy-server flags only to launched child processes. Windows system proxy, registry, and global network settings are never modified.",
 
         ["SystemProxyUnchangedShort"] = "Windows system proxy is not modified",
         ["TrayActiveBadge"] = "Tray enabled",

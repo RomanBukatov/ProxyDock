@@ -1,5 +1,7 @@
+using System.Text.Json;
 using ProxyDock.Core.Interfaces;
 using ProxyDock.Core.Models;
+using ProxyDock.Core.Services;
 
 namespace ProxyDock.Infrastructure.Persistence;
 
@@ -43,12 +45,23 @@ public sealed class ApplicationProfileRepository : IApplicationProfileRepository
         var items = await _store.LoadAsync(
             _paths.ApplicationsFilePath,
             () => new List<ApplicationProfile>(),
+            migrateFromElement: MigrateApplications,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return items;
     }
 
     public Task SaveAllAsync(IEnumerable<ApplicationProfile> applications, CancellationToken cancellationToken = default)
         => _store.SaveAsync(_paths.ApplicationsFilePath, applications.ToList(), cancellationToken);
+
+    private static List<ApplicationProfile> MigrateApplications(int fromVersion, JsonElement dataElement)
+    {
+        var items = dataElement.Deserialize<List<ApplicationProfile>>(JsonConfigStore.DefaultSerializerOptions) ?? [];
+        var rawElements = dataElement.ValueKind == JsonValueKind.Array
+            ? dataElement.EnumerateArray().ToList()
+            : null;
+        ApplicationProfileMigrator.MigrateFromSchemaVersion(fromVersion, items, rawElements);
+        return items;
+    }
 }
 
 public sealed class SettingsService : ISettingsService

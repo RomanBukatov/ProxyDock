@@ -114,7 +114,7 @@
             <TextBlock Text="Параметры Desktop GUI" FontWeight="SemiBold" />
             <CheckBox Content="Передавать флаг Chromium/Electron (--proxy-server=http://host:port)"
                       IsChecked="{Binding UseChromiumProxyFlag}" />
-            <TextBlock Text="Включайте только для Electron/Chromium-приложений (например, Google Antigravity). Пароль в аргументы запуска не подставляется."
+            <TextBlock Text="Рекомендуется для Electron/Chromium/Owl-приложений (Google Antigravity, Codex Desktop, Claude Desktop и др.). Пароль в аргументы запуска не подставляется."
                        Classes="caption"
                        TextWrapping="Wrap" />
 
@@ -166,6 +166,18 @@
                 <ComboBoxItem Content="PowerShell 7 (pwsh)" />
               </ComboBox>
             </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Параметры Node.js -->
+        <Border Classes="card">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Совместимость с Node.js" FontWeight="SemiBold" />
+            <CheckBox Content="Передавать NODE_USE_ENV_PROXY=1 (Node.js v22+/v24+)"
+                      IsChecked="{Binding UseNodeEnvProxy}" />
+            <TextBlock Text="Включает чтение HTTP_PROXY/HTTPS_PROXY для встроенного и системного Node.js (fetch, http/https, NodeService, MCP-серверы) при выключенном системном прокси Windows."
+                       Classes="caption"
+                       TextWrapping="Wrap" />
           </StackPanel>
         </Border>
 

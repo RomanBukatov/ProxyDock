@@ -8,13 +8,13 @@
 
 ## Ключевые особенности
 
-- **Нулевое вмешательство в систему:** переменные окружения (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`, `NO_PROXY`, `no_proxy`) задаются строго через `ProcessStartInfo.Environment` только для запускаемого дочернего процесса.
+- **Нулевое вмешательство в систему:** переменные окружения (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`, `NO_PROXY`, `no_proxy`, а также опциональный `NODE_USE_ENV_PROXY=1` для Node.js v22+/v24+) задаются строго через `ProcessStartInfo.Environment` только для запускаемого дочернего процесса.
 - **Одновременная работа с разными прокси:** можно запустить несколько приложений одновременно с разными HTTP-прокси или в режиме **«Без прокси»**.
 - **Desktop-first профили и анализ стека:**
   - **Google Antigravity Desktop** — автообнаружение Win32 Electron/Chromium, передача переменных окружения и флага `--proxy-server`.
-  - **Claude Desktop** — автообнаружение MSIX App Execution Alias (`claude-desktop.exe`), анализ стека (`Electron` + `cowork-svc.exe`), честное предупреждение о проверке применимости и поиск уже работающих процессов `Claude.exe`.
-  - **Codex Desktop** — автообнаружение MSIX App Execution Alias (`OpenAI.Codex_*\chatgpt-desktop.exe`), анализ стека (`Chromium/Owl` + `codex.exe` + `codex-windows-sandbox-service.exe`), честные рекомендации и поиск уже работающих процессов `ChatGPT.exe` / `Codex.exe`.
-  - Автоматический инспектор стека для любого добавленного `.exe` (различает Win32 Electron/Chromium, MSIX App Execution Alias, WebView2 и нативные `.exe` без слепого добавления `--proxy-server`).
+  - **Codex Desktop** — автообнаружение MSIX App Execution Alias (`OpenAI.Codex_*\chatgpt-desktop.exe`), подтверждённая стратегия запуска при выключенном системном прокси Windows (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`, `NODE_USE_ENV_PROXY=1` и `--proxy-server=http://host:port`) с наследованием окружения дочерними процессами `ChatGPT.exe` и `codex.exe` (`app-server` / `exec-server`), а также поиск уже работающих процессов `ChatGPT.exe` / `Codex.exe`.
+  - **Claude Desktop** — автообнаружение MSIX App Execution Alias (`claude-desktop.exe`), передача переменных окружения, `NODE_USE_ENV_PROXY=1` и `--proxy-server=http://host:port` (маршрутизация `NetworkService` проверена технически; статус остаётся `Требует проверки` до реального пользовательского теста чата/Cowork) и поиск уже работающих процессов `Claude.exe`.
+  - Автоматический инспектор стека для любого добавленного `.exe` (различает Win32 Electron/Chromium, MSIX App Execution Alias, WebView2 и нативные `.exe` без слепого добавления `--proxy-server`), а также общие параметры `--proxy-server` (Desktop) и `NODE_USE_ENV_PROXY=1` (Desktop и CLI) для любых пользовательских профилей.
 - **Проверка уже запущенных программ:** если приложение (включая свёрнутое в трей `Claude.exe` или `Antigravity.exe`) уже работает, ProxyDock предупреждает об этом и **не завершает чужой процесс принудительно**, так как повторный запуск может передать управление существующему окну без нового окружения.
 - **Управление прокси и безопасность (DPAPI):**
   - Поддержка нескольких HTTP-прокси, дублирования и профиля по умолчанию.
@@ -90,16 +90,18 @@ ProxyDock/
 
 #### Claude Desktop
 - Используйте профиль **Claude Desktop** (автообнаружение ищет MSIX App Execution Alias `%LOCALAPPDATA%\Microsoft\WindowsApps\Claude_*\claude-desktop.exe` или классическую установку в `LocalAppData`).
-- По умолчанию передаются только переменные окружения (`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` и lowercase-варианты). При желании можно включить экспериментальный режим `--proxy-server` в окне редактирования профиля.
-- **Важно:** Claude Desktop может оставаться в системном трее (`Claude.exe`) и содержит фоновый компонент `cowork-svc.exe`. Перед запуском через другой прокси полностью закройте Claude Desktop, в том числе из трея.
+- Передаются переменные окружения (`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY`), `NODE_USE_ENV_PROXY=1` и флаг `--proxy-server=http://host:port`. Маршрутизация `NetworkService` через прокси проверена технически, однако полная работоспособность чатов/Cowork помечена как **«Требует проверки»** до реального пользовательского теста.
+- **Важно:** Claude Desktop может оставаться в системном трее (`Claude.exe`) и содержит фоновую службу `cowork-svc.exe`. Перед запуском через другой прокси полностью закройте Claude Desktop, в том числе из трея.
 
 #### Codex Desktop
 - Используйте профиль **Codex Desktop** (автообнаружение ищет MSIX App Execution Alias `%LOCALAPPDATA%\Microsoft\WindowsApps\OpenAI.Codex_*\chatgpt-desktop.exe` или локальную установку).
-- Пакет включает оболочку Chromium/Owl (`ChatGPT.exe` / `Codex.exe`), внутренний `codex.exe` и службу Windows `codex-windows-sandbox-service.exe`.
-- По умолчанию передаются переменные окружения процесса; при проблемах в MSIX-контейнере дополнительно проверьте работу с флагом `--proxy-server` или настройкой `%USERPROFILE%\.codex\.env`.
+- Пакет включает оболочку Chromium/Owl (`ChatGPT.exe` / `Codex.exe`), внутренний `codex.exe` (`app-server`, `exec-server`) и службу Windows `codex-windows-sandbox-service.exe`.
+- Подтверждённый сценарий при выключенном системном прокси Windows: передаются `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY=1` и `--proxy-server=http://host:port`. Переменные окружения наследуются через MSIX App Execution Alias основным процессом `ChatGPT.exe` и дочерними процессами `codex.exe`.
+- Существующие профили Codex и Claude из конфигурации v1 автоматически мигрируют на v2 при запуске без перезаписи явных пользовательских переопределений (`--proxy-server`, `--no-proxy-server`, пользовательских `NODE_USE_ENV_PROXY` и заметок).
 
-#### Произвольное desktop-приложение
+#### Произвольное desktop-приложение и CLI
 - Нажмите **«+ Добавить» → «Desktop-приложение (.exe)...»**, выберите `.exe`, при необходимости задайте рабочую директорию, аргументы и дополнительные переменные окружения.
+- В редакторе любого профиля доступны переключатели **`--proxy-server=http://host:port`** (для Desktop Electron/Chromium/Owl) и **`NODE_USE_ENV_PROXY=1`** (для любых Desktop и CLI приложений на базе Node.js v22+/v24+).
 - Нажмите **«Проверить»**, чтобы увидеть результат анализа (Win32 Electron/Chromium, MSIX, WebView2 или нативное приложение) и рекомендации.
 
 ### 3. Запуск без прокси и CLI-режим

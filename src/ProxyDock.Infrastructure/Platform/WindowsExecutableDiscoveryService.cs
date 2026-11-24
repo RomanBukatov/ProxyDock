@@ -140,7 +140,7 @@ public sealed class WindowsExecutableDiscoveryService : IExecutableDiscoveryServ
 
         if (isMsixAlias)
         {
-            caveats.Add("Приложение упаковано как MSIX (WindowsApps App Execution Alias): изоляция контейнера или системная активация могут ограничивать передачу параметров.");
+            caveats.Add("Приложение упаковано как MSIX (WindowsApps App Execution Alias): переменные окружения и аргументы наследуются основным процессом и его дочерними процессами, но уже запущенный экземпляр в трее или отдельные системные службы Windows их не получают.");
         }
 
         if (hasCoworkService)
@@ -150,7 +150,7 @@ public sealed class WindowsExecutableDiscoveryService : IExecutableDiscoveryServ
 
         if (hasCodexCompanion)
         {
-            caveats.Add("В пакете обнаружены встроенный codex.exe и/или служба codex-windows-sandbox-service.exe: системная служба Windows не наследует переменные запуска GUI-клиента; при необходимости проверьте также %USERPROFILE%\\.codex\\.env.");
+            caveats.Add("В пакете присутствуют встроенный codex.exe (наследует HTTP_PROXY/HTTPS_PROXY от GUI-процесса) и фоновая служба Windows codex-windows-sandbox-service.exe (не наследует переменные запуска GUI-клиента).");
         }
 
         var supportsChromiumFlag = stack is AppRuntimeStack.Electron or AppRuntimeStack.ChromiumShell;
@@ -185,10 +185,20 @@ public sealed class WindowsExecutableDiscoveryService : IExecutableDiscoveryServ
         }
         else if (isMsixAlias && supportsChromiumFlag)
         {
-            applicability = ProxyApplicabilityLevel.NeedsVerification;
-            summary = stack == AppRuntimeStack.Electron
-                ? "MSIX Electron / Chromium (переменные окружения; флаг --proxy-server требует проверки для пакета)."
-                : "MSIX Chromium / Owl оболочка (переменные окружения; применимость к фоновым компонентам требует проверки).";
+            var isCodexMsix = string.Equals(templateKey, BuiltInAppTemplates.CodexDesktopKey, StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(Path.GetFileName(normalized), "chatgpt-desktop.exe", StringComparison.OrdinalIgnoreCase);
+            if (isCodexMsix)
+            {
+                applicability = ProxyApplicabilityLevel.Confirmed;
+                summary = "MSIX Chromium / Owl + codex.exe (подтверждённый сценарий: env + NODE_USE_ENV_PROXY=1 + --proxy-server).";
+            }
+            else
+            {
+                applicability = ProxyApplicabilityLevel.NeedsVerification;
+                summary = stack == AppRuntimeStack.Electron
+                    ? "MSIX Electron / Chromium (env + NODE_USE_ENV_PROXY=1 + --proxy-server; полная работа требует пользовательской проверки)."
+                    : "MSIX Chromium / Owl оболочка (env + NODE_USE_ENV_PROXY=1 + --proxy-server; применимость требует проверки).";
+            }
         }
         else if (isMsixAlias)
         {

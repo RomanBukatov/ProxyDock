@@ -486,6 +486,9 @@ public sealed partial class ApplicationEditorViewModel : ViewModelBase
     private bool _useChromiumProxyFlag;
 
     [ObservableProperty]
+    private bool _useNodeEnvProxy;
+
+    [ObservableProperty]
     private bool _launchInTerminal;
 
     [ObservableProperty]
@@ -541,6 +544,7 @@ public sealed partial class ApplicationEditorViewModel : ViewModelBase
                 ProxyMode = initial.ProxyMode,
                 ProxyProfileId = initial.ProxyProfileId,
                 UseChromiumProxyFlag = initial.UseChromiumProxyFlag,
+                UseNodeEnvProxy = initial.UseNodeEnvProxy,
                 LaunchInTerminal = initial.LaunchInTerminal,
                 KeepTerminalOpen = initial.KeepTerminalOpen,
                 TerminalOverride = initial.TerminalOverride,
@@ -567,6 +571,7 @@ public sealed partial class ApplicationEditorViewModel : ViewModelBase
         _selectedProxy = AvailableProxies.FirstOrDefault(p => p.Id == _working.ProxyProfileId)
             ?? AvailableProxies.FirstOrDefault(p => p.IsDefault);
         _useChromiumProxyFlag = _working.UseChromiumProxyFlag;
+        _useNodeEnvProxy = _working.UseNodeEnvProxy;
         _launchInTerminal = _working.LaunchInTerminal;
         _keepTerminalOpen = _working.KeepTerminalOpen;
         _terminalOverrideIndex = _working.TerminalOverride switch
@@ -754,6 +759,7 @@ public sealed partial class ApplicationEditorViewModel : ViewModelBase
         _working.ProxyMode = ProxyMode;
         _working.ProxyProfileId = ProxyMode == ProxyAssignmentMode.Specific ? SelectedProxy?.Id : null;
         _working.UseChromiumProxyFlag = LaunchKind == LaunchKind.Desktop && UseChromiumProxyFlag;
+        _working.UseNodeEnvProxy = UseNodeEnvProxy;
         _working.LaunchInTerminal = LaunchKind == LaunchKind.Cli && LaunchInTerminal;
         _working.KeepTerminalOpen = KeepTerminalOpen;
         _working.TerminalOverride = TerminalOverrideIndex switch

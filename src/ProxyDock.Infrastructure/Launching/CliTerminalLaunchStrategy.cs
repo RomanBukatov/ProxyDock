@@ -72,7 +72,8 @@ public sealed class CliTerminalLaunchStrategy : ILaunchStrategy
             credentials,
             application.NoProxyOverride,
             application.CustomEnvironmentVariables,
-            isDirectNoProxy);
+            isDirectNoProxy,
+            application.UseNodeEnvProxy);
 
         var warnings = new List<string>();
         var targetPath = discovery.ResolvedPath;

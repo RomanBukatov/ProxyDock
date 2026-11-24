@@ -16,6 +16,7 @@ public sealed class ApplicationProfile
     public ProxyAssignmentMode ProxyMode { get; set; } = ProxyAssignmentMode.InheritDefault;
     public Guid? ProxyProfileId { get; set; }
     public bool UseChromiumProxyFlag { get; set; }
+    public bool UseNodeEnvProxy { get; set; }
     public bool LaunchInTerminal { get; set; }
     public bool KeepTerminalOpen { get; set; } = true;
     public TerminalPreference? TerminalOverride { get; set; }

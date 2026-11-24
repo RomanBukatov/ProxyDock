@@ -142,6 +142,86 @@ public sealed class ProcessLaunchIntegrationTests
     }
 
     [Fact]
+    public async Task LaunchAsync_PassesNodeUseEnvProxyAndChromiumFlagToChild_AndStripsInDirectMode()
+    {
+        using var scope = new TempTestScope();
+        var proxyService = scope.Services.GetRequiredService<IProxyProfileService>();
+        var appService = scope.Services.GetRequiredService<IApplicationProfileService>();
+        var launcher = scope.Services.GetRequiredService<IApplicationLauncher>();
+
+        var (winProxyEnableBefore, winProxyServerBefore) = ReadWindowsInternetSettings();
+        var testChildExe = TestPaths.LocateTestChildExecutable();
+        var proxiedOut = Path.Combine(scope.RootPath, "node-chromium-proxied.json");
+        var directOut = Path.Combine(scope.RootPath, "node-chromium-direct.json");
+
+        var proxy = await proxyService.SaveAsync(new ProxyProfile
+        {
+            Name = "Loopback Proxy",
+            Host = "127.0.0.1",
+            Port = 8891,
+            NoProxy = "localhost,127.0.0.1,::1",
+            IsDefault = true
+        });
+
+        var proxiedApp = await appService.SaveAsync(new ApplicationProfile
+        {
+            Name = "Custom Node+Chromium App",
+            LaunchKind = LaunchKind.Desktop,
+            ExecutableOrCommand = testChildExe,
+            WorkingDirectory = scope.RootPath,
+            Arguments = $"--output \"{proxiedOut}\"",
+            ProxyMode = ProxyAssignmentMode.Specific,
+            ProxyProfileId = proxy.Id,
+            UseChromiumProxyFlag = true,
+            UseNodeEnvProxy = true
+        });
+
+        var proxiedResult = await launcher.LaunchAsync(new LaunchRequest { Application = proxiedApp, IgnoreAlreadyRunningWarning = true });
+        Assert.True(proxiedResult.Status is LaunchStatus.Started or LaunchStatus.StartedWithWarning);
+        Assert.Equal(LaunchRoutingStrategy.EnvironmentAndChromium, proxiedResult.Strategy);
+
+        var proxiedData = await WaitForChildOutputAsync(proxiedOut);
+        Assert.Equal("http://127.0.0.1:8891", proxiedData.Environment["HTTP_PROXY"]);
+        Assert.Equal("http://127.0.0.1:8891", proxiedData.Environment["HTTPS_PROXY"]);
+        Assert.Equal("http://127.0.0.1:8891", proxiedData.Environment["ALL_PROXY"]);
+        Assert.Equal("localhost,127.0.0.1,::1", proxiedData.Environment["NO_PROXY"]);
+        Assert.Equal("1", proxiedData.Environment["NODE_USE_ENV_PROXY"]);
+        Assert.Contains("--proxy-server=http://127.0.0.1:8891", proxiedData.Args);
+
+        var directApp = await appService.SaveAsync(new ApplicationProfile
+        {
+            Name = "Custom Node+Chromium Direct",
+            LaunchKind = LaunchKind.Desktop,
+            ExecutableOrCommand = testChildExe,
+            WorkingDirectory = scope.RootPath,
+            Arguments = $"--output \"{directOut}\"",
+            ProxyMode = ProxyAssignmentMode.Specific,
+            ProxyProfileId = proxy.Id,
+            UseChromiumProxyFlag = true,
+            UseNodeEnvProxy = true
+        });
+
+        var directResult = await launcher.LaunchAsync(new LaunchRequest
+        {
+            Application = directApp,
+            ForceDirectNoProxy = true,
+            IgnoreAlreadyRunningWarning = true
+        });
+        Assert.Equal(LaunchRoutingStrategy.DirectNoProxy, directResult.Strategy);
+
+        var directData = await WaitForChildOutputAsync(directOut);
+        Assert.Null(directData.Environment["HTTP_PROXY"]);
+        Assert.Null(directData.Environment["HTTPS_PROXY"]);
+        Assert.Null(directData.Environment["ALL_PROXY"]);
+        Assert.Null(directData.Environment["NODE_USE_ENV_PROXY"]);
+        Assert.DoesNotContain(directData.Args, a => a.StartsWith("--proxy-server", StringComparison.OrdinalIgnoreCase));
+
+        var (winProxyEnableAfter, winProxyServerAfter) = ReadWindowsInternetSettings();
+        Assert.Equal(winProxyEnableBefore, winProxyEnableAfter);
+        Assert.Equal(winProxyServerBefore, winProxyServerAfter);
+    }
+
+    [Fact]
     public async Task LaunchAsync_ReturnsStructuredFailure_WhenExecutableIsMissing()
     {
         using var scope = new TempTestScope();

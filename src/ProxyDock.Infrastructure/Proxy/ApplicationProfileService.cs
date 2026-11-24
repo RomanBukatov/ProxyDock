@@ -106,6 +106,7 @@ public sealed class ApplicationProfileService : IApplicationProfileService
             ProxyMode = source.ProxyMode,
             ProxyProfileId = source.ProxyProfileId,
             UseChromiumProxyFlag = source.UseChromiumProxyFlag,
+            UseNodeEnvProxy = source.UseNodeEnvProxy,
             LaunchInTerminal = source.LaunchInTerminal,
             KeepTerminalOpen = source.KeepTerminalOpen,
             TerminalOverride = source.TerminalOverride,

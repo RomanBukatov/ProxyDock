@@ -21,7 +21,8 @@ internal static class Program
         "https_proxy",
         "all_proxy",
         "NO_PROXY",
-        "no_proxy"
+        "no_proxy",
+        "NODE_USE_ENV_PROXY"
     ];
 
     public static async Task<int> Main(string[] args)
