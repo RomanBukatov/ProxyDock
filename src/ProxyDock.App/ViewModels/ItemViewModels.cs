@@ -137,14 +137,49 @@ public sealed partial class AppCardViewModel : ObservableObject
     public bool IsCli => Profile.LaunchKind == LaunchKind.Cli;
     public bool HasDesktopIcon => IsDesktop && Icon is not null;
     public bool HasDesktopFallbackIcon => IsDesktop && Icon is null;
+    public enum ProcessState { Stopped, Running, Background }
+
     [ObservableProperty]
-    private string _runtimeState = string.Empty;
+    [NotifyPropertyChangedFor(nameof(RuntimeState), nameof(StateBrush), nameof(ShowStop), nameof(ShowLaunch))]
+    [NotifyCanExecuteChangedFor(nameof(LaunchCommand), nameof(CloseCommand), nameof(RestartCommand), nameof(ForceCommand))]
+    private ProcessState? _state;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LaunchCommand), nameof(LaunchDirectCommand), nameof(CloseCommand), nameof(RestartCommand), nameof(ForceCommand))]
+    private bool _isBusy;
+
+    public bool ShowStop => State is ProcessState.Running or ProcessState.Background;
+    public bool ShowLaunch => TargetFound && !ShowStop;
+    public string RuntimeState => State switch
+    {
+        ProcessState.Running => Loc["StateRunning"],
+        ProcessState.Background => Loc["StateBackground"],
+        ProcessState.Stopped => Loc["StateStopped"],
+        _ => string.Empty
+    };
+    public IBrush StateBrush => FormatHelpers.Brush(State switch
+    {
+        ProcessState.Running => "SuccessBrush",
+        ProcessState.Background => "WarningBrush",
+        _ => "TextMutedBrush"
+    });
 
     public Func<AppCardViewModel, LifecycleAction, Task>? ManageAsync { get; init; }
     public enum LifecycleAction { Close, Force, Restart }
 
     public string TargetDisplay => string.IsNullOrWhiteSpace(ResolvedPath) ? Profile.ExecutableOrCommand : ResolvedPath;
-    public bool CanLaunch => TargetFound;
+    public bool CanLaunch => CanLaunchDirect && !ShowStop && (!IsDesktop || ManageAsync is null || State.HasValue);
+    private bool CanLaunchDirect => TargetFound && !IsBusy;
+    private bool CanManage => ShowStop && !IsBusy && ManageAsync is not null;
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private Task CloseAsync() => ManageAsync!(this, LifecycleAction.Close);
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private Task RestartAsync() => ManageAsync!(this, LifecycleAction.Restart);
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private Task ForceAsync() => ManageAsync!(this, LifecycleAction.Force);
     public bool ShowMissingWarning => !TargetFound;
     public bool ShowProxyDot => TargetFound;
     public string SubtitleText => TargetFound ? AssignedProxyLabel : Loc["TargetMissingShort"];
@@ -162,7 +197,7 @@ public sealed partial class AppCardViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanLaunch))]
     private Task LaunchAsync() => _launchAction(this, false);
 
-    [RelayCommand(CanExecute = nameof(CanLaunch))]
+    [RelayCommand(CanExecute = nameof(CanLaunchDirect))]
     private Task LaunchDirectAsync() => _launchAction(this, true);
 
     [RelayCommand]

@@ -1,22 +1,59 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 
 namespace ProxyDock.App.Views;
 
 public partial class MainWindow : Window
 {
+    private readonly DispatcherTimer _stateTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private CancellationTokenSource? _polling;
+    private bool _opened;
+
     public MainWindow()
     {
         InitializeComponent();
-        var timer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        async void RefreshStates(object? sender, EventArgs args)
+        _stateTimer.Tick += RefreshStates;
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (_opened && (change.Property == IsVisibleProperty || change.Property == WindowStateProperty))
+            UpdatePolling();
+    }
+
+    private void UpdatePolling()
+    {
+        if (_opened && IsVisible && WindowState != WindowState.Minimized)
         {
-            if (IsVisible && DataContext is ViewModels.MainWindowViewModel vm)
-                await vm.Applications.RefreshStatesAsync();
+            if (_polling is not null) return;
+            _polling = new CancellationTokenSource();
+            _stateTimer.Start();
+            RefreshStates(this, EventArgs.Empty);
         }
-        timer.Tick += RefreshStates;
-        Activated += (_, _) => { timer.Start(); RefreshStates(this, EventArgs.Empty); };
-        Deactivated += (_, _) => timer.Stop();
-        Closed += (_, _) => timer.Stop();
+        else
+        {
+            _stateTimer.Stop();
+            _polling?.Cancel();
+            _polling?.Dispose();
+            _polling = null;
+        }
+    }
+
+    private async void RefreshStates(object? sender, EventArgs args)
+    {
+        if (_polling is { } polling && DataContext is ViewModels.MainWindowViewModel vm &&
+            vm.CurrentPage == vm.Applications)
+            await vm.Applications.RefreshStatesAsync(polling.Token);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _opened = false;
+        UpdatePolling();
+        _stateTimer.Tick -= RefreshStates;
+        base.OnClosed(e);
     }
 
     public bool AllowExit { get; set; }
@@ -27,6 +64,8 @@ public partial class MainWindow : Window
     {
         base.OnOpened(e);
         FitToWorkingArea();
+        _opened = true;
+        UpdatePolling();
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)

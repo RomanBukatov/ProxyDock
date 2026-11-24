@@ -54,6 +54,14 @@ public sealed class RunningAppInspection
     public IReadOnlyList<DetectedProcessInfo> HelperOrAuxiliaryProcesses
         => Processes.Where(p => p.Role is DetectedProcessRole.ChromiumHelper or DetectedProcessRole.AuxiliaryOrCompanion).ToList();
 
+    private IReadOnlyList<DetectedProcessInfo> _previouslyConfirmed = [];
+
+    public void RetainVerifiedInstances(RunningAppInspection previous)
+    {
+        if (string.Equals(ExpectedExecutablePath, previous.ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase))
+            _previouslyConfirmed = previous.ConfirmedProcesses;
+    }
+
     // Related names and a shared installation directory alone do not establish ownership.
     public IReadOnlyList<DetectedProcessInfo> ConfirmedProcesses
     {
@@ -62,7 +70,9 @@ public sealed class RunningAppInspection
             var confirmed = Processes.Where(p =>
                 (p.MatchedByMsixIdentity || p.MatchedByExecutablePath) &&
                 !string.IsNullOrWhiteSpace(ExpectedExecutablePath) &&
-                string.Equals(p.ExecutablePath, ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase))
+                (string.Equals(p.ExecutablePath, ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase) ||
+                 _previouslyConfirmed.Any(old => old.ProcessId == p.ProcessId && old.StartedUtc.HasValue &&
+                     old.StartedUtc == p.StartedUtc && string.Equals(old.ExecutablePath, p.ExecutablePath, StringComparison.OrdinalIgnoreCase))))
                 .ToDictionary(p => p.ProcessId);
 
             // The same package can also run an independent CLI session.

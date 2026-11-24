@@ -122,7 +122,7 @@
 
                   <TextBlock Grid.Column="1" Text="{Binding RuntimeState}" IsVisible="{Binding IsDesktop}"
                              Margin="8,0" VerticalAlignment="Center" TextWrapping="Wrap"
-                             FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                             FontSize="12" Foreground="{Binding StateBrush}" />
                   <Button Grid.Column="2"
                           Name="AppMoreMenuButton"
                           Content="⋯"
@@ -160,7 +160,7 @@
                 <Panel Grid.Row="2">
                   <Button Classes="launch-btn"
                           HorizontalAlignment="Stretch"
-                          IsVisible="{Binding TargetFound}"
+                          IsVisible="{Binding ShowLaunch}"
                           Command="{Binding LaunchCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                       <Path Data="M 1,0.5 L 9.5,5.5 L 1,10.5 Z"
@@ -172,6 +172,15 @@
                     </StackPanel>
                   </Button>
 
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" IsVisible="{Binding ShowStop}">
+                    <Button Classes="danger" HorizontalAlignment="Stretch" Height="36"
+                            Content="{Binding Loc[MenuClose]}" Command="{Binding CloseCommand}" />
+                    <Button Grid.Column="1" Classes="secondary" Width="36" Height="36" Padding="0"
+                            AutomationProperties.Name="{Binding Loc[MenuRestart]}"
+                            ToolTip.Tip="{Binding Loc[MenuRestart]}" Command="{Binding RestartCommand}">
+                      <PathIcon Width="15" Height="15" Data="M12 4a8 8 0 1 0 7.9 9h-2a6 6 0 1 1-1.7-5.3L13 11h8V3l-3.3 3.3A8 8 0 0 0 12 4Z" />
+                    </Button>
+                  </Grid>
                   <Grid ColumnDefinitions="*,Auto"
                         ColumnSpacing="8"
                         IsVisible="{Binding !TargetFound}">

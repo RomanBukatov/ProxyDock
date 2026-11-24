@@ -55,7 +55,7 @@ internal static class StringsEn
         ["MenuClose"] = "Close application",
         ["MenuForce"] = "Force quit",
         ["ForceBody"] = "Force quit {0} (PID {1})? Unsaved changes may be lost.",
-        ["StillRunning"] = "Processes are still running. Quit from the application menu or use Force quit.",
+        ["StillRunning"] = "The application is still running. Quit from its menu or choose Force quit in the card’s ⋯ menu.",
         ["MenuEdit"] = "Edit",
         ["MenuEditDetails"] = "Profile settings...",
         ["MenuOpenFileLocation"] = "Open file location",

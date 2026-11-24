@@ -14,6 +14,18 @@ namespace ProxyDock.Tests;
 
 public sealed class AppLifecycleTests
 {
+    private static void Wait(Task task)
+    {
+        var timeout = Stopwatch.StartNew();
+        while (!task.IsCompleted && timeout.Elapsed < TimeSpan.FromSeconds(20))
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(10);
+        }
+        Assert.True(task.IsCompleted);
+        task.GetAwaiter().GetResult();
+    }
+
     [Fact]
     public async Task RestartFromCardClosesTestWindowAndLaunchesWithSelectedProxy()
     {
@@ -57,24 +69,21 @@ public sealed class AppLifecycleTests
                 var vm = new ApplicationsViewModel(loc, apps, proxies, discovery,
                     new IconCacheService(scope.Services.GetRequiredService<IAppIconExtractor>(), discovery),
                     dialogs, coordinator, notifications, scope.Services.GetRequiredService<IProcessTracker>());
-                void Wait(Task task)
-                {
-                    var timeout = Stopwatch.StartNew();
-                    while (!task.IsCompleted && timeout.Elapsed < TimeSpan.FromSeconds(20))
-                    {
-                        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                        Thread.Sleep(10);
-                    }
-                    Assert.True(task.IsCompleted);
-                    task.GetAwaiter().GetResult();
-                }
+
                 Wait(vm.RefreshAsync());
                 Wait(vm.RefreshStatesAsync());
                 var card = Assert.Single(vm.FilteredApps);
                 Assert.Equal(loc["StateRunning"], card.RuntimeState);
-                Wait(card.ManageAsync!(card, AppCardViewModel.LifecycleAction.Force));
+                Assert.True(card.ShowStop);
+                Assert.False(card.LaunchCommand.CanExecute(null));
+                Wait(card.ForceCommand.ExecuteAsync(null));
                 Assert.False(child.HasExited); // The confirmation dialog declined.
-                Wait(card.ManageAsync!(card, AppCardViewModel.LifecycleAction.Restart));
+                var restarting = card.RestartCommand.ExecuteAsync(null);
+                Assert.True(card.IsBusy);
+                Assert.False(card.CloseCommand.CanExecute(null));
+                Assert.False(card.LaunchDirectCommand.CanExecute(null));
+                Wait(restarting);
+                Assert.False(card.IsBusy);
             });
             Assert.True(child.HasExited);
             Assert.Equal(0, child.ExitCode);
@@ -88,6 +97,73 @@ public sealed class AppLifecycleTests
         {
             if (!child.HasExited) child.Kill();
         }
+    }
+
+    [Fact]
+    public async Task ExternalWindowCloseAndExitChangeCardActions()
+    {
+        using var scope = new TempTestScope();
+        var source = TestPaths.LocateTestChildExecutable();
+        foreach (var file in Directory.GetFiles(Path.GetDirectoryName(source)!, "ProxyDock.TestChild.*"))
+            File.Copy(file, Path.Combine(scope.RootPath, Path.GetFileName(file)));
+        var exe = Path.Combine(scope.RootPath, Path.GetFileName(source));
+        var apps = scope.Services.GetRequiredService<IApplicationProfileService>();
+        await apps.SaveAsync(new ApplicationProfile { Name = "External child", ExecutableOrCommand = exe });
+        AvaloniaTestRuntime.RunOnUiThread(() =>
+        {
+            var loc = new LocalizationService();
+            var discovery = scope.Services.GetRequiredService<IExecutableDiscoveryService>();
+            var dialogs = new UiFixesAndProcessDetectionTests.NoOpDialogService();
+            var notifications = new AppNotificationService();
+            var coordinator = new AppLaunchCoordinator(scope.Services.GetRequiredService<IApplicationLauncher>(),
+                apps, discovery, dialogs, notifications, loc);
+            var vm = new ApplicationsViewModel(loc, apps, scope.Services.GetRequiredService<IProxyProfileService>(),
+                discovery, new IconCacheService(scope.Services.GetRequiredService<IAppIconExtractor>(), discovery),
+                dialogs, coordinator, notifications, scope.Services.GetRequiredService<IProcessTracker>());
+            Wait(vm.RefreshAsync());
+            var card = Assert.Single(vm.FilteredApps);
+            Wait(vm.RefreshStatesAsync());
+            Assert.True(card.LaunchCommand.CanExecute(null));
+            using var child = Process.Start(new ProcessStartInfo(exe, "--test-window --sleep-ms 30000")
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+            })!;
+            try
+            {
+                void Expect(AppCardViewModel.ProcessState expected)
+                {
+                    var timeout = Stopwatch.StartNew();
+                    do
+                    {
+                        Wait(vm.RefreshStatesAsync());
+                        if (card.State == expected) return;
+                        Thread.Sleep(50);
+                    } while (timeout.Elapsed < TimeSpan.FromSeconds(5));
+                    Assert.Equal(expected, card.State);
+                }
+                Expect(AppCardViewModel.ProcessState.Running);
+                Assert.True(card.CloseCommand.CanExecute(null));
+                Assert.False(card.ShowLaunch);
+                Assert.True(child.CloseMainWindow());
+                Expect(AppCardViewModel.ProcessState.Background);
+                AppNotification? warning = null;
+                notifications.NotificationRaised += (_, n) => warning = n;
+                Wait(card.CloseCommand.ExecuteAsync(null));
+                Assert.Equal(NotificationSeverity.Warning, warning?.Severity);
+                Assert.Equal(AppCardViewModel.ProcessState.Background, card.State);
+                Assert.True(card.RestartCommand.CanExecute(null));
+                Assert.True(card.ForceCommand.CanExecute(null));
+                child.Kill();
+                Assert.True(child.WaitForExit(5000));
+                Expect(AppCardViewModel.ProcessState.Stopped);
+                Assert.True(card.ShowLaunch);
+                Assert.False(card.CloseCommand.CanExecute(null));
+            }
+            finally
+            {
+                if (!child.HasExited) child.Kill();
+            }
+        });
     }
 
     [Fact]
@@ -112,6 +188,8 @@ public sealed class AppLifecycleTests
         var afterClose = new RunningAppInspection { ExpectedExecutablePath = image, Processes = [orphan] };
         Assert.Empty(afterClose.ConfirmedProcesses);
         Assert.True(afterClose.HasRemainingInstances(result.ConfirmedProcesses));
+        afterClose.RetainVerifiedInstances(result);
+        Assert.Equal(orphan.ProcessId, Assert.Single(afterClose.ConfirmedProcesses).ProcessId);
     }
 
     [Fact]
