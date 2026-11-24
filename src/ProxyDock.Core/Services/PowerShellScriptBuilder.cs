@@ -62,13 +62,16 @@ public static class PowerShellScriptBuilder
 
         if (!string.IsNullOrWhiteSpace(options.DpapiHexProtectedProxyUri))
         {
-            sb.AppendLine($"$__pdSec = ConvertTo-SecureString {EscapeSingleQuoted(options.DpapiHexProtectedProxyUri)}");
+            sb.AppendLine("$__pdSecMod = [System.IO.Path]::Combine($PSHOME, 'Modules', 'Microsoft.PowerShell.Security')");
+            sb.AppendLine("if ([System.IO.Directory]::Exists($__pdSecMod)) { Microsoft.PowerShell.Core\\Import-Module -Name $__pdSecMod -ErrorAction SilentlyContinue }");
+            sb.AppendLine($"$__pdSec = ConvertTo-SecureString {EscapeSingleQuoted(options.DpapiHexProtectedProxyUri)} -ErrorAction Stop");
             sb.AppendLine("$__pdUri = [System.Net.NetworkCredential]::new('', $__pdSec).Password");
+            sb.AppendLine("if ([string]::IsNullOrEmpty($__pdUri)) { throw 'Не удалось расшифровать параметры прокси (DPAPI).' }");
             foreach (var proxyVar in ProxyEnvironmentBuilder.ProxyVariableNames)
             {
                 sb.AppendLine($"[Environment]::SetEnvironmentVariable({EscapeSingleQuoted(proxyVar)}, $__pdUri, 'Process')");
             }
-            sb.AppendLine("Remove-Variable __pdSec, __pdUri -ErrorAction SilentlyContinue");
+            sb.AppendLine("Remove-Variable __pdSecMod, __pdSec, __pdUri -ErrorAction SilentlyContinue");
         }
         else if (!options.IsDirectNoProxy && !string.IsNullOrWhiteSpace(options.PlainProxyUri))
         {

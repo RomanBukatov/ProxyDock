@@ -21,7 +21,10 @@ public sealed class ScriptAndRedactorTests
             DpapiHexProtectedProxyUri: "01000000D08C9DDF"));
 
         Assert.Contains("Remove-Item -LiteralPath $MyInvocation.MyCommand.Path", script);
+        Assert.Contains("Microsoft.PowerShell.Core\\Import-Module", script);
+        Assert.Contains("Microsoft.PowerShell.Security", script);
         Assert.Contains("ConvertTo-SecureString '01000000D08C9DDF'", script);
+        Assert.Contains("-ErrorAction Stop", script);
         Assert.Contains("'hello''; Start-Process calc; #'", script);
         Assert.Contains(@"& $__pdCmd @__pdArgs", script);
         Assert.DoesNotContain("super-secret-password", script);

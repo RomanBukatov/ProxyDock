@@ -205,13 +205,21 @@ public sealed class CliTerminalLaunchStrategy : ILaunchStrategy
             terminalArgs.Add(scriptPath);
         }
 
+        var processEnvironmentRemove = new List<string>(envDelta.Remove);
+        if (!envDelta.Set.Keys.Any(k => string.Equals(k, "PSModulePath", StringComparison.OrdinalIgnoreCase))
+            && !processEnvironmentRemove.Any(k => string.Equals(k, "PSModulePath", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Очищаем унаследованный PSModulePath (например, от pwsh 7), чтобы powershell.exe инициализировал свой чистый путь модулей.
+            processEnvironmentRemove.Add("PSModulePath");
+        }
+
         return new LaunchPlan
         {
             FileName = launcherExe,
             WorkingDirectory = workingDir,
             Arguments = terminalArgs,
             EnvironmentSet = envDelta.Set,
-            EnvironmentRemove = envDelta.Remove,
+            EnvironmentRemove = processEnvironmentRemove,
             Strategy = isDirectNoProxy || proxy is null ? LaunchRoutingStrategy.DirectNoProxy : LaunchRoutingStrategy.CliTerminal,
             UseInteractiveTerminal = true,
             GeneratedScriptPath = scriptPath,
