@@ -120,6 +120,9 @@
                     </Panel>
                   </Border>
 
+                  <TextBlock Grid.Column="1" Text="{Binding RuntimeState}" IsVisible="{Binding IsDesktop}"
+                             Margin="8,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                             FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                   <Button Grid.Column="2"
                           Name="AppMoreMenuButton"
                           Content="⋯"
@@ -137,6 +140,7 @@
                   <TextBlock Text="{Binding Name}"
                              Classes="app-card-title"
                              TextWrapping="Wrap" />
+
 
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <Ellipse Width="6"

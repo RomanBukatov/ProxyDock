@@ -19,6 +19,7 @@ public interface IProcessTracker : IDisposable
     event EventHandler<TrackedProcessInfo>? ProcessExited;
     IReadOnlyCollection<TrackedProcessInfo> ActiveProcesses { get; }
     void Track(Process process, ApplicationProfile application, string resolvedTarget);
+    void RequestStop(RunningAppInspection inspection, bool force);
     IReadOnlyList<int> FindRunningInstances(string resolvedExecutablePath, IReadOnlyCollection<string>? relatedProcessNames = null);
     RunningAppInspection InspectRunningInstances(string resolvedExecutablePath, IReadOnlyCollection<string>? relatedProcessNames = null, string? templateKey = null);
 }

@@ -73,6 +73,22 @@ public static class AppCardMenuBuilder
         });
 
         flyout.Items.Add(changeProxyRoot);
+        if (card.IsDesktop && card.ResolvedPath is not null && card.ManageAsync is { } manage)
+        {
+            foreach (var (label, action) in new[]
+            {
+                ("MenuRestart", AppCardViewModel.LifecycleAction.Restart),
+                ("MenuClose", AppCardViewModel.LifecycleAction.Close),
+                ("MenuForce", AppCardViewModel.LifecycleAction.Force)
+            })
+            {
+                flyout.Items.Add(new MenuItem
+                {
+                    Header = loc[label],
+                    Command = new CommunityToolkit.Mvvm.Input.AsyncRelayCommand(() => manage(card, action))
+                });
+            }
+        }
         flyout.Items.Add(new Separator());
 
         flyout.Items.Add(new MenuItem

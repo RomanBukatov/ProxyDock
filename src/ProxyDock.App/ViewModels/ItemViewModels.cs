@@ -137,6 +137,12 @@ public sealed partial class AppCardViewModel : ObservableObject
     public bool IsCli => Profile.LaunchKind == LaunchKind.Cli;
     public bool HasDesktopIcon => IsDesktop && Icon is not null;
     public bool HasDesktopFallbackIcon => IsDesktop && Icon is null;
+    [ObservableProperty]
+    private string _runtimeState = string.Empty;
+
+    public Func<AppCardViewModel, LifecycleAction, Task>? ManageAsync { get; init; }
+    public enum LifecycleAction { Close, Force, Restart }
+
     public string TargetDisplay => string.IsNullOrWhiteSpace(ResolvedPath) ? Profile.ExecutableOrCommand : ResolvedPath;
     public bool CanLaunch => TargetFound;
     public bool ShowMissingWarning => !TargetFound;

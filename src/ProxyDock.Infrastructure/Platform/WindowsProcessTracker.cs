@@ -147,6 +147,8 @@ public sealed class WindowsProcessTracker : IProcessTracker
             }
         }
 
+        using var currentProcess = Process.GetCurrentProcess();
+        var sessionId = currentProcess.SessionId;
         var parentPids = SnapshotParentProcessIds();
         var visibleWindows = SnapshotVisibleWindowsByPid();
         var seenPids = new HashSet<int>();
@@ -173,6 +175,11 @@ public sealed class WindowsProcessTracker : IProcessTracker
                         continue;
                     }
 
+                    if (proc.SessionId != sessionId)
+                    {
+                        continue;
+                    }
+                    var startedUtc = proc.StartTime.ToUniversalTime();
                     var pid = proc.Id;
                     parentPids.TryGetValue(pid, out var parentPidVal);
                     int? parentPid = parentPids.ContainsKey(pid) ? parentPidVal : null;
@@ -221,7 +228,8 @@ public sealed class WindowsProcessTracker : IProcessTracker
                         HasVisibleWindow: hasVisibleWindow,
                         MainWindowTitle: windowTitle,
                         MatchedByPrimaryName: matchedByPrimaryName,
-                        IsTrackedByProxyDock: _tracked.ContainsKey(pid)));
+                        IsTrackedByProxyDock: _tracked.ContainsKey(pid),
+                        StartedUtc: startedUtc));
                 }
                 catch
                 {
@@ -242,6 +250,39 @@ public sealed class WindowsProcessTracker : IProcessTracker
             IsWindowsAppsAlias: isWindowsAppsAlias);
 
         return ProcessInstanceClassifier.Classify(rawCandidates, matchContext);
+    }
+
+    public void RequestStop(RunningAppInspection inspection, bool force)
+    {
+        foreach (var candidate in inspection.ConfirmedProcesses)
+        {
+            StopInstance(candidate, force);
+        }
+    }
+
+    private static void StopInstance(DetectedProcessInfo candidate, bool force)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(candidate.ProcessId);
+            // Pin the kernel object before validating the snapshot, including across PID reuse.
+            _ = process.SafeHandle;
+            if (process.HasExited || process.StartTime.ToUniversalTime() != candidate.StartedUtc)
+            {
+                return;
+            }
+
+            if (force)
+            {
+                process.Kill(entireProcessTree: false);
+            }
+            else if (candidate.Role is DetectedProcessRole.PrimaryWithVisibleWindow or DetectedProcessRole.PrimaryTrayOrBackground)
+            {
+                process.CloseMainWindow();
+            }
+        }
+        catch (ArgumentException) { /* Already exited. */ }
+        catch (InvalidOperationException) { /* Already exited. */ }
     }
 
     public void Dispose()

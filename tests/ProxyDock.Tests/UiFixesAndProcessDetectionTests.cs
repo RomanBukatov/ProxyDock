@@ -399,7 +399,7 @@ public sealed class UiFixesAndProcessDetectionTests
         return 0.2126 * Linearize(r) + 0.7152 * Linearize(g) + 0.0722 * Linearize(b);
     }
 
-    private sealed class NoOpDialogService : IDialogService
+    internal sealed class NoOpDialogService : IDialogService
     {
         public Task<ApplicationProfile?> ShowApplicationEditorAsync(ApplicationProfile? initialProfile) => Task.FromResult<ApplicationProfile?>(null);
         public Task<ProxyProfile?> ShowProxyEditorAsync(ProxyProfile? initialProfile) => Task.FromResult<ProxyProfile?>(null);

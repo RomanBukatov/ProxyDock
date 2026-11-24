@@ -17,7 +17,8 @@ public sealed record RawProcessCandidate(
     bool HasVisibleWindow,
     string? MainWindowTitle,
     bool MatchedByPrimaryName,
-    bool IsTrackedByProxyDock = false);
+    bool IsTrackedByProxyDock = false,
+    DateTime? StartedUtc = null);
 
 /// <summary>
 /// Контекст целевого приложения для сопоставления и классификации процессов.
@@ -166,6 +167,7 @@ public static partial class ProcessInstanceClassifier
             results.Add(new DetectedProcessInfo
             {
                 ProcessId = c.ProcessId,
+                StartedUtc = c.StartedUtc,
                 ParentProcessId = c.ParentProcessId,
                 ProcessName = c.ProcessName,
                 ExecutablePath = c.ExecutablePath,

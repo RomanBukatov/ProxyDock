@@ -12,6 +12,9 @@ internal sealed record ChildReport(
 
 internal static class Program
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr owner, string text, string caption, uint type);
+
     private static readonly string[] InspectedKeys =
     [
         "HTTP_PROXY",
@@ -48,6 +51,11 @@ internal static class Program
         }
 
         await WriteReportAsync(args, outputPath);
+
+        if (args.Contains("--test-window"))
+        {
+            MessageBoxW(IntPtr.Zero, "Lifecycle regression test", "ProxyDock.TestChild", 0);
+        }
 
         if (sleepMs > 0)
         {
@@ -94,7 +102,9 @@ internal static class Program
                 Directory.CreateDirectory(dir);
             }
 
-            await File.WriteAllTextAsync(outputPath, json, Encoding.UTF8);
+            var pending = $"{outputPath}.{Environment.ProcessId}.tmp";
+            await File.WriteAllTextAsync(pending, json, Encoding.UTF8);
+            File.Move(pending, outputPath, overwrite: true);
         }
         else
         {

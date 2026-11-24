@@ -7,6 +7,16 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var timer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        async void RefreshStates(object? sender, EventArgs args)
+        {
+            if (IsVisible && DataContext is ViewModels.MainWindowViewModel vm)
+                await vm.Applications.RefreshStatesAsync();
+        }
+        timer.Tick += RefreshStates;
+        Activated += (_, _) => { timer.Start(); RefreshStates(this, EventArgs.Empty); };
+        Deactivated += (_, _) => timer.Stop();
+        Closed += (_, _) => timer.Stop();
     }
 
     public bool AllowExit { get; set; }

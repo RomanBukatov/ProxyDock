@@ -19,6 +19,7 @@ public enum DetectedProcessRole
 /// </summary>
 public sealed class DetectedProcessInfo
 {
+    public DateTime? StartedUtc { get; init; }
     public int ProcessId { get; init; }
     public int? ParentProcessId { get; init; }
     public string ProcessName { get; init; } = string.Empty;
@@ -52,6 +53,38 @@ public sealed class RunningAppInspection
 
     public IReadOnlyList<DetectedProcessInfo> HelperOrAuxiliaryProcesses
         => Processes.Where(p => p.Role is DetectedProcessRole.ChromiumHelper or DetectedProcessRole.AuxiliaryOrCompanion).ToList();
+
+    // Related names and a shared installation directory alone do not establish ownership.
+    public IReadOnlyList<DetectedProcessInfo> ConfirmedProcesses
+    {
+        get
+        {
+            var confirmed = Processes.Where(p =>
+                (p.MatchedByMsixIdentity || p.MatchedByExecutablePath) &&
+                !string.IsNullOrWhiteSpace(ExpectedExecutablePath) &&
+                string.Equals(p.ExecutablePath, ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(p => p.ProcessId);
+
+            // The same package can also run an independent CLI session.
+            // Include companion binaries only through a verified, older parent.
+            int count;
+            do
+            {
+                count = confirmed.Count;
+                foreach (var p in Processes)
+                {
+                    if ((p.MatchedByMsixIdentity || p.MatchedByExecutablePath) &&
+                        p.ParentProcessId is int parentId && confirmed.TryGetValue(parentId, out var parent) &&
+                        parent.StartedUtc <= p.StartedUtc)
+                    {
+                        confirmed.TryAdd(p.ProcessId, p);
+                    }
+                }
+            } while (count != confirmed.Count);
+
+            return confirmed.Values.ToList();
+        }
+    }
 
     public bool HasActiveMainInstance
         => PrimaryVisibleProcesses.Count > 0 || PrimaryTrayOrBackgroundProcesses.Count > 0;

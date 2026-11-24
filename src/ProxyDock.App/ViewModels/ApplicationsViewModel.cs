@@ -21,6 +21,9 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
     private readonly AppNotificationService _notifications;
     private List<AppCardViewModel> _allCards = [];
     private bool _isUpdatingProxies;
+    private readonly IProcessTracker? _tracker;
+    private bool _refreshingStates;
+    private bool _managing;
 
     [ObservableProperty]
     private string _searchQuery = string.Empty;
@@ -60,7 +63,8 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         IconCacheService iconCache,
         IDialogService dialogs,
         AppLaunchCoordinator coordinator,
-        AppNotificationService notifications)
+        AppNotificationService notifications,
+        IProcessTracker? tracker = null)
         : base(loc)
     {
         _appService = appService;
@@ -70,6 +74,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
         _dialogs = dialogs;
         _coordinator = coordinator;
         _notifications = notifications;
+        _tracker = tracker;
 
         _appService.ApplicationsChanged += (_, _) => _ = RefreshAsync();
         _proxyService.ProxiesChanged += (_, _) => _ = RefreshAsync();
@@ -153,7 +158,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
                 DuplicateAppAsync,
                 DeleteAppAsync,
                 ShowDiagnosticsAsync,
-                OpenFolder));
+                OpenFolder) { ManageAsync = ManageAppAsync });
         }
 
         var unaddedDetected = FilterUnaddedDetectedTemplates(apps, _discovery.DiscoverTemplate);
@@ -209,6 +214,73 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
 
             ApplyFilter();
         });
+    }
+
+    public async Task RefreshStatesAsync()
+    {
+        if (_tracker is null || _refreshingStates) return;
+        _refreshingStates = true;
+        try
+        {
+            foreach (var card in _allCards)
+            {
+                if (!card.IsDesktop || card.ResolvedPath is null) continue;
+                var inspection = await Task.Run(() => Inspect(card));
+                var confirmed = inspection.ConfirmedProcesses;
+                var state = confirmed.Count == 0 ? "StateStopped" : "StateBackground";
+                if (confirmed.Any(p => p.Role == DetectedProcessRole.PrimaryWithVisibleWindow))
+                    state = "StateRunning";
+                card.RuntimeState = Loc[state];
+            }
+        }
+        finally
+        {
+            _refreshingStates = false;
+        }
+    }
+
+    private RunningAppInspection Inspect(AppCardViewModel card) =>
+        _tracker!.InspectRunningInstances(card.ResolvedPath!, card.Profile.RelatedProcessNames, card.Profile.TemplateKey);
+
+    private async Task ManageAppAsync(AppCardViewModel card, AppCardViewModel.LifecycleAction action)
+    {
+        if (_tracker is null || card.ResolvedPath is null || _managing) return;
+        _managing = true;
+        try
+        {
+            var inspection = await Task.Run(() => Inspect(card));
+            var targets = inspection.ConfirmedProcesses.ToList();
+            var force = action == AppCardViewModel.LifecycleAction.Force;
+            if (force && targets.Count > 0 &&
+                !await _dialogs.ShowConfirmationAsync(Loc["MenuForce"], Loc.Format("ForceBody", card.Name,
+                    string.Join(", ", targets.Select(p => p.ProcessId))), Loc["MenuForce"], Loc["BtnCancel"], isDanger: true))
+                return;
+
+            await Task.Run(() => _tracker.RequestStop(inspection, force));
+            inspection = await Task.Run(() => Inspect(card));
+            for (var attempt = 0; attempt < 12 && inspection.ConfirmedProcesses.Count > 0; attempt++)
+            {
+                await Task.Delay(250);
+                inspection = await Task.Run(() => Inspect(card));
+            }
+            if (inspection.ConfirmedProcesses.Any() || inspection.HasActiveMainInstance)
+            {
+                _notifications.Show(card.Name, Loc["StillRunning"], NotificationSeverity.Warning);
+            }
+            else if (action == AppCardViewModel.LifecycleAction.Restart)
+            {
+                await LaunchAppAsync(card, false);
+            }
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            _notifications.Show(card.Name, ex.Message, NotificationSeverity.Error);
+        }
+        finally
+        {
+            _managing = false;
+            await RefreshStatesAsync();
+        }
     }
 
     public static IReadOnlyList<(BuiltInAppTemplates.TemplateDescriptor Template, string ResolvedPath)> FilterUnaddedDetectedTemplates(
