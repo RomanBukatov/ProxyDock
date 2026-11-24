@@ -86,6 +86,14 @@ public sealed class RunningAppInspection
         }
     }
 
+    public bool HasRemainingInstances(IReadOnlyList<DetectedProcessInfo> previous)
+    {
+        if (ConfirmedProcesses.Count > 0) return true;
+        // An approved companion can outlive its parent and lose the ancestry match.
+        return Processes.Any(current => previous.Any(old => old.ProcessId == current.ProcessId &&
+            old.StartedUtc.HasValue && old.StartedUtc == current.StartedUtc));
+    }
+
     public bool HasActiveMainInstance
         => PrimaryVisibleProcesses.Count > 0 || PrimaryTrayOrBackgroundProcesses.Count > 0;
 

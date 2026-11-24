@@ -108,6 +108,10 @@ public sealed class AppLifecycleTests
         ], new ProcessMatchContext(image, ExpectedPackageFamilyName: "Family"));
 
         Assert.Equal(new[] { 100, 101 }, result.ConfirmedProcesses.Select(p => p.ProcessId).Order());
+        var orphan = result.Processes.Single(p => p.ProcessId == 101);
+        var afterClose = new RunningAppInspection { ExpectedExecutablePath = image, Processes = [orphan] };
+        Assert.Empty(afterClose.ConfirmedProcesses);
+        Assert.True(afterClose.HasRemainingInstances(result.ConfirmedProcesses));
     }
 
     [Fact]

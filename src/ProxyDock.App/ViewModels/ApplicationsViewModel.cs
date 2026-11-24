@@ -258,12 +258,12 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
 
             await Task.Run(() => _tracker.RequestStop(inspection, force));
             inspection = await Task.Run(() => Inspect(card));
-            for (var attempt = 0; attempt < 12 && inspection.ConfirmedProcesses.Count > 0; attempt++)
+            for (var attempt = 0; attempt < 12 && inspection.HasRemainingInstances(targets); attempt++)
             {
                 await Task.Delay(250);
                 inspection = await Task.Run(() => Inspect(card));
             }
-            if (inspection.ConfirmedProcesses.Any() || inspection.HasActiveMainInstance)
+            if (inspection.HasRemainingInstances(targets) || inspection.HasActiveMainInstance)
             {
                 _notifications.Show(card.Name, Loc["StillRunning"], NotificationSeverity.Warning);
             }
