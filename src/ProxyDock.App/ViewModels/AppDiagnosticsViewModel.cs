@@ -11,13 +11,17 @@ namespace ProxyDock.App.ViewModels;
 
 public sealed class DetectedProcessRowViewModel
 {
-    public DetectedProcessRowViewModel(DetectedProcessInfo info)
+    public DetectedProcessRowViewModel(DetectedProcessInfo info, bool? isConfirmedOwnership = null)
     {
         Info = info;
+        IsConfirmedOwnership = isConfirmedOwnership;
     }
 
     public DetectedProcessInfo Info { get; }
-    public string PidText => $"PID {Info.ProcessId}";
+    public bool? IsConfirmedOwnership { get; }
+    public string PidText => Info.ParentProcessId is int ppid
+        ? $"PID {Info.ProcessId} (PPID {ppid})"
+        : $"PID {Info.ProcessId}";
     public string Name => Info.ProcessName;
     public string RoleLabel => Info.Role switch
     {
@@ -35,6 +39,20 @@ public sealed class DetectedProcessRowViewModel
         get
         {
             var parts = new List<string>();
+            if (IsConfirmedOwnership == true)
+            {
+                parts.Add("Принадлежность: подтверждена");
+            }
+            else if (IsConfirmedOwnership == false)
+            {
+                parts.Add("Принадлежность: неоднозначно");
+            }
+
+            if (Info.StartedUtc is DateTime started)
+            {
+                parts.Add($"Старт: {started.ToLocalTime():HH:mm:ss}");
+            }
+
             if (!string.IsNullOrWhiteSpace(Info.MainWindowTitle))
             {
                 parts.Add($"Окно: «{Info.MainWindowTitle}»");
@@ -199,15 +217,19 @@ public sealed partial class AppDiagnosticsViewModel : ViewModelBase
         DetectedProcesses.Clear();
         if (_profile.LaunchKind == LaunchKind.Desktop && probe.Found && !string.IsNullOrWhiteSpace(probe.ResolvedPath))
         {
-            var inspection = _processTracker.InspectRunningInstances(
-                probe.ResolvedPath,
-                _profile.RelatedProcessNames,
-                _profile.TemplateKey);
+            var inspection = _processTracker.InspectApplication(_profile, probe.ResolvedPath);
+            var confirmedPids = inspection.ConfirmedProcesses.Select(p => p.ProcessId).ToHashSet();
+            var ambiguousPids = inspection.AmbiguousProcesses.Select(p => p.ProcessId).ToHashSet();
 
             ProcessDetectionSummary = inspection.BuildDiagnosticSummary();
             foreach (var proc in inspection.Processes)
             {
-                DetectedProcesses.Add(new DetectedProcessRowViewModel(proc));
+                bool? ownership = confirmedPids.Contains(proc.ProcessId)
+                    ? true
+                    : ambiguousPids.Contains(proc.ProcessId)
+                        ? false
+                        : null;
+                DetectedProcesses.Add(new DetectedProcessRowViewModel(proc, ownership));
             }
         }
         else

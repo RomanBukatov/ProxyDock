@@ -44,15 +44,22 @@ public partial class MainWindow : Window
     private async void RefreshStates(object? sender, EventArgs args)
     {
         if (_polling is { } polling && DataContext is ViewModels.MainWindowViewModel vm &&
-            vm.CurrentPage == vm.Applications)
+            vm.CurrentPage == vm.Applications && !vm.Applications.IsRefreshingStates)
             await vm.Applications.RefreshStatesAsync(polling.Token);
     }
+
+    private void OnFilteredAppsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        => RefreshStates(this, EventArgs.Empty);
 
     protected override void OnClosed(EventArgs e)
     {
         _opened = false;
         UpdatePolling();
         _stateTimer.Tick -= RefreshStates;
+        if (DataContext is ViewModels.MainWindowViewModel vm)
+        {
+            vm.Applications.FilteredApps.CollectionChanged -= OnFilteredAppsChanged;
+        }
         base.OnClosed(e);
     }
 
@@ -65,6 +72,10 @@ public partial class MainWindow : Window
         base.OnOpened(e);
         FitToWorkingArea();
         _opened = true;
+        if (DataContext is ViewModels.MainWindowViewModel vm)
+        {
+            vm.Applications.FilteredApps.CollectionChanged += OnFilteredAppsChanged;
+        }
         UpdatePolling();
     }
 

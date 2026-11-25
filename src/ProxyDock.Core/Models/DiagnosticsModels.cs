@@ -42,5 +42,6 @@ public sealed class TrackedProcessInfo
     public string ApplicationName { get; init; } = string.Empty;
     public string ExecutablePath { get; init; } = string.Empty;
     public DateTimeOffset StartedAtUtc { get; init; }
+    public DateTime? ProcessCreationTimeUtc { get; init; }
     public bool HasExited { get; set; }
 }

@@ -95,10 +95,7 @@ public sealed class ApplicationLauncher : IApplicationLauncher
                 var probe = _discovery.Resolve(app);
                 if (probe.Found && !string.IsNullOrWhiteSpace(probe.ResolvedPath))
                 {
-                    runningInspection = _processTracker.InspectRunningInstances(
-                        probe.ResolvedPath,
-                        app.RelatedProcessNames,
-                        app.TemplateKey);
+                    runningInspection = _processTracker.InspectApplication(app, probe.ResolvedPath);
 
                     if (runningInspection.HasActiveMainInstance
                         && settings.ConfirmBeforeRelaunchingRunningApp

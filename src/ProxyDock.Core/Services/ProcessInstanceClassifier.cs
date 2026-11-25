@@ -18,7 +18,11 @@ public sealed record RawProcessCandidate(
     string? MainWindowTitle,
     bool MatchedByPrimaryName,
     bool IsTrackedByProxyDock = false,
-    DateTime? StartedUtc = null);
+    DateTime? StartedUtc = null,
+    bool IsTrackedForTargetProfile = false,
+    bool IsTrackedForOtherProfile = false,
+    int? AncestorCandidateProcessId = null,
+    bool IsSystemService = false);
 
 /// <summary>
 /// Контекст целевого приложения для сопоставления и классификации процессов.
@@ -28,7 +32,9 @@ public sealed record ProcessMatchContext(
     string? ExpectedTargetExecutablePath = null,
     string? ExpectedPackageFamilyName = null,
     string? ExpectedPackageRoot = null,
-    bool IsWindowsAppsAlias = false);
+    bool IsWindowsAppsAlias = false,
+    string? ExpectedUserDataDir = null,
+    bool HasActiveTrackedRootForTarget = false);
 
 /// <summary>
 /// Детерминированный классификатор запущенных процессов:
@@ -55,7 +61,16 @@ public static partial class ProcessInstanceClassifier
         "crashpad",
         "updater",
         "cowork-svc",
-        "sandbox-service"
+        "sandbox-service",
+        "sandbox-setup",
+        "elevation_service",
+        "elevated_tracing_service",
+        "command-runner",
+        "code-mode-host",
+        "native-host",
+        "ssh-askpass",
+        "ssh-broker",
+        "ssh-proxy"
     ];
 
     public static RunningAppInspection Classify(
@@ -74,6 +89,9 @@ public static partial class ProcessInstanceClassifier
         var normalizedPackageRoot = string.IsNullOrWhiteSpace(context.ExpectedPackageRoot)
             ? null
             : NormalizePathSafe(context.ExpectedPackageRoot);
+        var normalizedExpectedUserDataDir = string.IsNullOrWhiteSpace(context.ExpectedUserDataDir)
+            ? null
+            : NormalizePathSafe(context.ExpectedUserDataDir);
 
         var hasMsixContext = !string.IsNullOrWhiteSpace(context.ExpectedPackageFamilyName)
             || !string.IsNullOrWhiteSpace(normalizedPackageRoot);
@@ -82,6 +100,21 @@ public static partial class ProcessInstanceClassifier
 
         foreach (var candidate in candidates)
         {
+            if (candidate.IsSystemService)
+            {
+                continue;
+            }
+
+            if (normalizedExpectedUserDataDir is not null && !candidate.IsTrackedForTargetProfile)
+            {
+                var candUserDataDir = ExtractChromiumUserDataDir(candidate.CommandLine);
+                if (!string.IsNullOrWhiteSpace(candUserDataDir)
+                    && !string.Equals(NormalizePathSafe(candUserDataDir), normalizedExpectedUserDataDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+            }
+
             var normalizedCandPath = string.IsNullOrWhiteSpace(candidate.ExecutablePath)
                 ? null
                 : NormalizePathSafe(candidate.ExecutablePath);
@@ -134,7 +167,11 @@ public static partial class ProcessInstanceClassifier
                     && !string.IsNullOrWhiteSpace(normalizedExpectedMain)
                     && !string.Equals(normalizedCandPath, normalizedExpectedMain, StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    // Дочерний процесс с тем же именем может находиться в подпапке установки (или в том же каталоге)
+                    if (string.IsNullOrWhiteSpace(expectedMainDir) || !IsPathUnderRoot(normalizedCandPath, expectedMainDir))
+                    {
+                        continue;
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(normalizedCandPath))
@@ -142,13 +179,20 @@ public static partial class ProcessInstanceClassifier
                     matchedByPath = true;
                 }
             }
-            else if (!candidate.MatchedByPrimaryName && !string.IsNullOrWhiteSpace(normalizedCandPath) && !string.IsNullOrWhiteSpace(expectedMainDir))
+            else if (!string.IsNullOrWhiteSpace(normalizedCandPath) && !string.IsNullOrWhiteSpace(expectedMainDir))
             {
-                // Для связанных имён без MSIX проверяем, находятся ли они в той же папке установки (если путь известен),
-                // но не отбрасываем, если путь совпадает с подпапкой установки.
                 if (IsPathUnderRoot(normalizedCandPath, expectedMainDir))
                 {
                     matchedByPath = true;
+                }
+                else if (candidate.IsTrackedByProxyDock)
+                {
+                    // Если процесс запущен/отслеживается по связанному имени (например, тест с подменённым целевым путём)
+                }
+                else
+                {
+                    // Одноимённый процесс из совершенно другой папки не относится к целевому приложению
+                    continue;
                 }
             }
 
@@ -169,6 +213,7 @@ public static partial class ProcessInstanceClassifier
                 ProcessId = c.ProcessId,
                 StartedUtc = c.StartedUtc,
                 ParentProcessId = c.ParentProcessId,
+                AncestorCandidateProcessId = c.AncestorCandidateProcessId,
                 ProcessName = c.ProcessName,
                 ExecutablePath = c.ExecutablePath,
                 PackageFullName = c.PackageFullName,
@@ -180,7 +225,9 @@ public static partial class ProcessInstanceClassifier
                 MatchedByMsixIdentity = byMsix,
                 MatchedByExecutablePath = byPath,
                 MatchedByProcessName = !byMsix && !byPath,
-                IsTrackedByProxyDock = c.IsTrackedByProxyDock
+                IsTrackedByProxyDock = c.IsTrackedByProxyDock || c.IsTrackedForTargetProfile,
+                IsTrackedForTargetProfile = c.IsTrackedForTargetProfile,
+                IsTrackedForOtherProfile = c.IsTrackedForOtherProfile
             });
         }
 
@@ -188,6 +235,7 @@ public static partial class ProcessInstanceClassifier
         {
             ExpectedPackageFamilyName = context.ExpectedPackageFamilyName,
             ExpectedExecutablePath = expectedMainExe,
+            HasActiveTrackedRootForTarget = context.HasActiveTrackedRootForTarget,
             Processes = results
         };
     }
@@ -218,7 +266,13 @@ public static partial class ProcessInstanceClassifier
             return DetectedProcessRole.PrimaryWithVisibleWindow;
         }
 
-        if (candidate.ParentProcessId is int ppid && candidatePids.Contains(ppid))
+        var parentRef = candidate.ParentProcessId is int directPpid && candidatePids.Contains(directPpid)
+            ? directPpid
+            : candidate.AncestorCandidateProcessId is int ancestorPid && candidatePids.Contains(ancestorPid)
+                ? ancestorPid
+                : (int?)null;
+
+        if (parentRef is int ppid)
         {
             if (byPid.TryGetValue(ppid, out var parent)
                 && string.Equals(parent.ProcessName, candidate.ProcessName, StringComparison.OrdinalIgnoreCase))
@@ -251,7 +305,8 @@ public static partial class ProcessInstanceClassifier
             var expectedMainFile = Path.GetFileName(expectedMainExe);
             var candidateFile = Path.GetFileName(normalized);
 
-            if (normalized.Contains(@"\resources\", StringComparison.OrdinalIgnoreCase)
+            if ((normalized.Contains(@"\resources\", StringComparison.OrdinalIgnoreCase)
+                 || normalized.Contains(@"\dependencies\", StringComparison.OrdinalIgnoreCase))
                 && !string.Equals(candidateFile, expectedMainFile, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
@@ -261,7 +316,8 @@ public static partial class ProcessInstanceClassifier
         if (!string.IsNullOrWhiteSpace(candidate.CommandLine))
         {
             if (candidate.CommandLine.Contains("app-server", StringComparison.OrdinalIgnoreCase)
-                || candidate.CommandLine.Contains("exec-server", StringComparison.OrdinalIgnoreCase))
+                || candidate.CommandLine.Contains("exec-server", StringComparison.OrdinalIgnoreCase)
+                || candidate.CommandLine.Contains("sidecar_sdk", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -281,8 +337,28 @@ public static partial class ProcessInstanceClassifier
         return match.Success ? match.Groups[1].Value : null;
     }
 
+    public static string? ExtractChromiumUserDataDir(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine))
+        {
+            return null;
+        }
+
+        var match = UserDataDirRegex().Match(commandLine);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var value = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
     [GeneratedRegex(@"--type=([A-Za-z0-9\-_]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TypeFlagRegex();
+
+    [GeneratedRegex(@"--user-data-dir=(?:""([^""]+)""|([^\s""]+))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex UserDataDirRegex();
 
     private static bool IsPathUnderRoot(string candidatePath, string rootPath)
     {

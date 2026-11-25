@@ -9,7 +9,7 @@
     <Authors>ProxyDock Contributors</Authors>
     <Description>Windows 11 Desktop HTTP Proxy Launcher</Description>
     <Copyright>Copyright © 2026 ProxyDock</Copyright>
-    <ProxyDockVersion Condition="'$(ProxyDockVersion)' == ''">0.1.0</ProxyDockVersion>
+    <ProxyDockVersion Condition="'$(ProxyDockVersion)' == ''">0.1.1</ProxyDockVersion>
     <_ProxyDockCoreVersion>$([System.String]::Copy('$(ProxyDockVersion)').Split('-')[0])</_ProxyDockCoreVersion>
     <Version>$(ProxyDockVersion)</Version>
     <AssemblyVersion>$(_ProxyDockCoreVersion).0</AssemblyVersion>

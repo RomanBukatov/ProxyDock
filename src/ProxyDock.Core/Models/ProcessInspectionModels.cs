@@ -15,6 +15,28 @@ public enum DetectedProcessRole
 }
 
 /// <summary>
+/// Итог операции штатного или принудительного завершения приложения.
+/// </summary>
+public enum ProcessStopOutcome
+{
+    AllStopped = 0,
+    StillRunningAfterGraceful = 1,
+    GracefulVetoed = 2,
+    PartialOrFailedTermination = 3,
+    AmbiguousRemaining = 4
+}
+
+/// <summary>
+/// Подробная ошибка завершения конкретного процесса.
+/// </summary>
+public sealed record ProcessTerminationError(
+    int ProcessId,
+    string ProcessName,
+    string? ExecutablePath,
+    int NativeErrorCode,
+    string Message);
+
+/// <summary>
 /// Подробная диагностическая информация об одном обнаруженном процессе.
 /// </summary>
 public sealed class DetectedProcessInfo
@@ -22,6 +44,7 @@ public sealed class DetectedProcessInfo
     public DateTime? StartedUtc { get; init; }
     public int ProcessId { get; init; }
     public int? ParentProcessId { get; init; }
+    public int? AncestorCandidateProcessId { get; init; }
     public string ProcessName { get; init; } = string.Empty;
     public string? ExecutablePath { get; init; }
     public string? PackageFullName { get; init; }
@@ -34,6 +57,26 @@ public sealed class DetectedProcessInfo
     public bool MatchedByExecutablePath { get; init; }
     public bool MatchedByProcessName { get; init; }
     public bool IsTrackedByProxyDock { get; init; }
+    public bool IsTrackedForTargetProfile { get; init; }
+    public bool IsTrackedForOtherProfile { get; init; }
+}
+
+/// <summary>
+/// Результат штатного или принудительного завершения процессов целевого экземпляра.
+/// </summary>
+public sealed class ProcessStopResult
+{
+    public ProcessStopOutcome Outcome { get; init; }
+    public required RunningAppInspection FinalInspection { get; init; }
+    public IReadOnlyList<DetectedProcessInfo> RemainingConfirmedProcesses { get; init; } = [];
+    public IReadOnlyList<DetectedProcessInfo> RemainingAmbiguousProcesses { get; init; } = [];
+    public IReadOnlyList<ProcessTerminationError> Errors { get; init; } = [];
+    public string? GracefulStrategyUsed { get; init; }
+
+    public bool AllTargetProcessesStopped
+        => RemainingConfirmedProcesses.Count == 0
+           && RemainingAmbiguousProcesses.Count == 0
+           && Errors.Count == 0;
 }
 
 /// <summary>
@@ -41,8 +84,12 @@ public sealed class DetectedProcessInfo
 /// </summary>
 public sealed class RunningAppInspection
 {
+    private readonly List<(DetectedProcessInfo Info, DateTime LastSeenUtc)> _previouslyConfirmed = [];
+
+    public DateTime InspectedAtUtc { get; init; } = DateTime.UtcNow;
     public string? ExpectedPackageFamilyName { get; init; }
     public string? ExpectedExecutablePath { get; init; }
+    public bool HasActiveTrackedRootForTarget { get; init; }
     public IReadOnlyList<DetectedProcessInfo> Processes { get; init; } = [];
 
     public IReadOnlyList<DetectedProcessInfo> PrimaryVisibleProcesses
@@ -54,12 +101,52 @@ public sealed class RunningAppInspection
     public IReadOnlyList<DetectedProcessInfo> HelperOrAuxiliaryProcesses
         => Processes.Where(p => p.Role is DetectedProcessRole.ChromiumHelper or DetectedProcessRole.AuxiliaryOrCompanion).ToList();
 
-    private IReadOnlyList<DetectedProcessInfo> _previouslyConfirmed = [];
-
-    public void RetainVerifiedInstances(RunningAppInspection previous)
+    public void RetainVerifiedInstances(RunningAppInspection? previous)
     {
-        if (string.Equals(ExpectedExecutablePath, previous.ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase))
-            _previouslyConfirmed = previous.ConfirmedProcesses;
+        if (previous is null || !string.Equals(ExpectedExecutablePath, previous.ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var cutoff = InspectedAtUtc.AddSeconds(-15);
+        var byKey = new Dictionary<(int ProcessId, DateTime? StartedUtc), (DetectedProcessInfo Info, DateTime LastSeenUtc)>();
+
+        foreach (var entry in _previouslyConfirmed)
+        {
+            if (entry.LastSeenUtc >= cutoff)
+            {
+                byKey[(entry.Info.ProcessId, entry.Info.StartedUtc)] = entry;
+            }
+        }
+
+        foreach (var entry in previous._previouslyConfirmed)
+        {
+            if (entry.LastSeenUtc >= cutoff)
+            {
+                var key = (entry.Info.ProcessId, entry.Info.StartedUtc);
+                if (!byKey.TryGetValue(key, out var existing) || entry.LastSeenUtc > existing.LastSeenUtc)
+                {
+                    byKey[key] = entry;
+                }
+            }
+        }
+
+        foreach (var proc in previous.ConfirmedProcesses)
+        {
+            var key = (proc.ProcessId, proc.StartedUtc);
+            byKey[key] = (proc, previous.InspectedAtUtc);
+        }
+
+        _previouslyConfirmed.Clear();
+        if (HasActiveTrackedRootForTarget)
+        {
+            // При активном отслеживаемом корне не переносим старые внешние процессы из предыдущих снимков
+            _previouslyConfirmed.AddRange(byKey.Values.Where(v => v.Info.IsTrackedForTargetProfile || v.Info.ParentProcessId != null));
+        }
+        else
+        {
+            _previouslyConfirmed.AddRange(byKey.Values);
+        }
     }
 
     // Related names and a shared installation directory alone do not establish ownership.
@@ -67,41 +154,131 @@ public sealed class RunningAppInspection
     {
         get
         {
-            var confirmed = Processes.Where(p =>
-                (p.MatchedByMsixIdentity || p.MatchedByExecutablePath) &&
-                !string.IsNullOrWhiteSpace(ExpectedExecutablePath) &&
-                (string.Equals(p.ExecutablePath, ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase) ||
-                 _previouslyConfirmed.Any(old => old.ProcessId == p.ProcessId && old.StartedUtc.HasValue &&
-                     old.StartedUtc == p.StartedUtc && string.Equals(old.ExecutablePath, p.ExecutablePath, StringComparison.OrdinalIgnoreCase))))
-                .ToDictionary(p => p.ProcessId);
+            var confirmed = new Dictionary<int, DetectedProcessInfo>();
+            var expectedFileName = string.IsNullOrWhiteSpace(ExpectedExecutablePath)
+                ? null
+                : Path.GetFileName(ExpectedExecutablePath);
+
+            foreach (var p in Processes)
+            {
+                if (p.IsTrackedForOtherProfile)
+                {
+                    continue;
+                }
+
+                if (!(p.MatchedByMsixIdentity || p.MatchedByExecutablePath))
+                {
+                    continue;
+                }
+
+                var isSeed = false;
+
+                if (HasActiveTrackedRootForTarget)
+                {
+                    isSeed = p.IsTrackedForTargetProfile;
+                }
+                else
+                {
+                    var matchesExactExpected = !string.IsNullOrWhiteSpace(ExpectedExecutablePath)
+                        && string.Equals(p.ExecutablePath, ExpectedExecutablePath, StringComparison.OrdinalIgnoreCase);
+
+                    var matchesMsixPrimaryImage = !string.IsNullOrWhiteSpace(ExpectedPackageFamilyName)
+                        && p.MatchedByMsixIdentity
+                        && !string.IsNullOrWhiteSpace(p.ExecutablePath)
+                        && !string.IsNullOrWhiteSpace(expectedFileName)
+                        && p.ExecutablePath.Contains(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(Path.GetFileName(p.ExecutablePath), expectedFileName, StringComparison.OrdinalIgnoreCase);
+
+                    isSeed = matchesExactExpected || matchesMsixPrimaryImage || MatchesPreviouslyConfirmed(p);
+                }
+
+                if (isSeed)
+                {
+                    confirmed.TryAdd(p.ProcessId, p);
+                }
+            }
 
             // The same package can also run an independent CLI session.
-            // Include companion binaries only through a verified, older parent.
+            // Include companion binaries only through a verified, older parent (live or recently observed).
             int count;
             do
             {
                 count = confirmed.Count;
                 foreach (var p in Processes)
                 {
-                    if ((p.MatchedByMsixIdentity || p.MatchedByExecutablePath) &&
-                        p.ParentProcessId is int parentId && confirmed.TryGetValue(parentId, out var parent) &&
-                        parent.StartedUtc <= p.StartedUtc)
+                    if (p.IsTrackedForOtherProfile
+                        || confirmed.ContainsKey(p.ProcessId)
+                        || !(p.MatchedByMsixIdentity || p.MatchedByExecutablePath))
+                    {
+                        continue;
+                    }
+
+                    if (MatchesLiveParent(p, p.ParentProcessId, confirmed)
+                        || MatchesLiveParent(p, p.AncestorCandidateProcessId, confirmed)
+                        || MatchesRecentParent(p, p.ParentProcessId)
+                        || MatchesRecentParent(p, p.AncestorCandidateProcessId))
                     {
                         confirmed.TryAdd(p.ProcessId, p);
                     }
                 }
-            } while (count != confirmed.Count);
+            }
+            while (count != confirmed.Count);
 
             return confirmed.Values.ToList();
         }
     }
 
+    /// <summary>
+    /// Связанные процессы того же пакета или папки установки, принадлежность которых к управляемому экземпляру не удалось доказать однозначно.
+    /// </summary>
+    public IReadOnlyList<DetectedProcessInfo> AmbiguousProcesses
+    {
+        get
+        {
+            if (HasActiveTrackedRootForTarget)
+            {
+                return [];
+            }
+
+            var confirmedPids = ConfirmedProcesses.Select(p => p.ProcessId).ToHashSet();
+            var expectedDir = GetDirectorySafe(ExpectedExecutablePath);
+
+            var ambiguous = new List<DetectedProcessInfo>();
+            foreach (var p in Processes)
+            {
+                if (confirmedPids.Contains(p.ProcessId) || p.IsTrackedForOtherProfile)
+                {
+                    continue;
+                }
+
+                var samePackageOrWindowsApps = !string.IsNullOrWhiteSpace(ExpectedPackageFamilyName)
+                    && p.MatchedByMsixIdentity;
+
+                var sameInstallRoot = !string.IsNullOrWhiteSpace(expectedDir)
+                    && !string.IsNullOrWhiteSpace(p.ExecutablePath)
+                    && IsPathUnderRoot(p.ExecutablePath, expectedDir);
+
+                if (samePackageOrWindowsApps || sameInstallRoot)
+                {
+                    ambiguous.Add(p);
+                }
+            }
+
+            return ambiguous;
+        }
+    }
+
     public bool HasRemainingInstances(IReadOnlyList<DetectedProcessInfo> previous)
     {
-        if (ConfirmedProcesses.Count > 0) return true;
+        if (ConfirmedProcesses.Count > 0 || AmbiguousProcesses.Count > 0)
+        {
+            return true;
+        }
+
         // An approved companion can outlive its parent and lose the ancestry match.
-        return Processes.Any(current => previous.Any(old => old.ProcessId == current.ProcessId &&
-            old.StartedUtc.HasValue && old.StartedUtc == current.StartedUtc));
+        return Processes.Any(current => previous.Any(old => old.ProcessId == current.ProcessId
+            && old.StartedUtc.HasValue
+            && old.StartedUtc == current.StartedUtc));
     }
 
     public bool HasActiveMainInstance
@@ -134,19 +311,27 @@ public sealed class RunningAppInspection
         var visible = PrimaryVisibleProcesses;
         var tray = PrimaryTrayOrBackgroundProcesses;
         var helpers = HelperOrAuxiliaryProcesses;
+        var confirmedCount = ConfirmedProcesses.Count;
+        var ambiguousCount = AmbiguousProcesses.Count;
 
         sb.Append($"Обнаружено процессов: {Processes.Count}");
-        sb.Append($" (основных с окном: {visible.Count}, в трее/фоне: {tray.Count}, вспомогательных: {helpers.Count}).");
+        sb.Append($" (основных с окном: {visible.Count}, в трее/фоне: {tray.Count}, вспомогательных: {helpers.Count}, подтверждено: {confirmedCount}");
+        if (ambiguousCount > 0)
+        {
+            sb.Append($", неоднозначных: {ambiguousCount}");
+        }
+
+        sb.Append(").");
 
         if (visible.Count > 0)
         {
-            var pids = string.Join(", ", visible.Select(p => FormatPidWithName(p)));
+            var pids = string.Join(", ", visible.Select(FormatPidWithName));
             sb.Append($" Видимое окно: {pids}.");
         }
 
         if (tray.Count > 0)
         {
-            var pids = string.Join(", ", tray.Select(p => FormatPidWithName(p)));
+            var pids = string.Join(", ", tray.Select(FormatPidWithName));
             sb.Append($" Основной процесс без окна/в трее: {pids}.");
         }
 
@@ -173,6 +358,75 @@ public sealed class RunningAppInspection
         }
 
         return sb.ToString();
+    }
+
+    private bool MatchesPreviouslyConfirmed(DetectedProcessInfo candidate)
+        => _previouslyConfirmed.Any(old =>
+            old.Info.ProcessId == candidate.ProcessId
+            && old.Info.StartedUtc.HasValue
+            && old.Info.StartedUtc == candidate.StartedUtc
+            && string.Equals(old.Info.ExecutablePath, candidate.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+
+    private static bool MatchesLiveParent(
+        DetectedProcessInfo child,
+        int? parentId,
+        Dictionary<int, DetectedProcessInfo> confirmed)
+    {
+        if (parentId is not int pid || !confirmed.TryGetValue(pid, out var parent))
+        {
+            return false;
+        }
+
+        return !parent.StartedUtc.HasValue
+               || !child.StartedUtc.HasValue
+               || parent.StartedUtc.Value <= child.StartedUtc.Value;
+    }
+
+    private bool MatchesRecentParent(DetectedProcessInfo child, int? parentId)
+    {
+        if (parentId is not int pid || !child.StartedUtc.HasValue)
+        {
+            return false;
+        }
+
+        return _previouslyConfirmed.Any(old =>
+            old.Info.ProcessId == pid
+            && old.Info.StartedUtc.HasValue
+            && old.Info.StartedUtc.Value <= child.StartedUtc.Value
+            && child.StartedUtc.Value <= old.LastSeenUtc.AddSeconds(10));
+    }
+
+    private static string? GetDirectorySafe(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetDirectoryName(Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool IsPathUnderRoot(string candidatePath, string rootPath)
+    {
+        try
+        {
+            var normalizedCand = Path.GetFullPath(candidatePath).TrimEnd(Path.DirectorySeparatorChar);
+            var normalizedRoot = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar);
+            var rootWithSep = normalizedRoot + Path.DirectorySeparatorChar;
+            return normalizedCand.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                   || normalizedCand.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string FormatPidWithName(DetectedProcessInfo p)
