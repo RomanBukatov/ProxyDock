@@ -119,6 +119,13 @@ public static partial class ProcessInstanceClassifier
                 ? null
                 : NormalizePathSafe(candidate.ExecutablePath);
 
+            // RuntimeBroker can carry the client's package identity in the user's session.
+            if (hasMsixContext && string.Equals(normalizedCandPath,
+                    Path.Combine(Environment.SystemDirectory, "RuntimeBroker.exe"), StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             var matchedByMsix = false;
             var matchedByPath = false;
 
@@ -234,6 +241,7 @@ public static partial class ProcessInstanceClassifier
         return new RunningAppInspection
         {
             ExpectedPackageFamilyName = context.ExpectedPackageFamilyName,
+            InspectionTargetPath = context.ExpectedExecutablePath,
             ExpectedExecutablePath = expectedMainExe,
             HasActiveTrackedRootForTarget = context.HasActiveTrackedRootForTarget,
             Processes = results

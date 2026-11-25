@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
+using Microsoft.Extensions.Logging;
 using ProxyDock.Core.Interfaces;
 using ProxyDock.Core.Models;
 using ProxyDock.Core.Services;
@@ -41,7 +42,8 @@ internal enum SessionEndSignalStatus
 {
     Sent = 0,
     Vetoed = 1,
-    NoWindows = 2
+    NoWindows = 2,
+    DeliveryFailed = 3
 }
 
 internal interface IProcessPlatformOperations
@@ -95,10 +97,16 @@ public sealed class WindowsProcessTracker : IProcessTracker
 
     private readonly ConcurrentDictionary<int, (TrackedProcessInfo Info, Process Process, EventHandler ExitHandler)> _tracked = new();
     private readonly IProcessPlatformOperations _platform;
+    private readonly ILogger<WindowsProcessTracker>? _logger;
 
     public WindowsProcessTracker()
         : this(Win32ProcessPlatformOperations.Instance)
     {
+    }
+
+    public WindowsProcessTracker(ILogger<WindowsProcessTracker> logger) : this()
+    {
+        _logger = logger;
     }
 
     internal WindowsProcessTracker(IProcessPlatformOperations platform)
@@ -536,7 +544,7 @@ public sealed class WindowsProcessTracker : IProcessTracker
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(inspection);
 
-        var targetPath = inspection.ExpectedExecutablePath ?? application.ExecutableOrCommand;
+        var targetPath = inspection.InspectionTargetPath ?? inspection.ExpectedExecutablePath ?? application.ExecutableOrCommand;
         if (!force)
         {
             return await StopGracefullyAsync(application, targetPath, inspection, cancellationToken).ConfigureAwait(false);
@@ -566,7 +574,10 @@ public sealed class WindowsProcessTracker : IProcessTracker
             };
         }
 
-        var strategyName = ResolveGracefulStrategy(application, current);
+        // The installed Claude desktop client routes session-end to its app quit handler.
+        var strategyName = string.Equals(application.TemplateKey, BuiltInAppTemplates.ClaudeDesktopKey, StringComparison.OrdinalIgnoreCase)
+            ? "SessionEndAppExit"
+            : "CloseMainWindow";
         var primaryPids = confirmed
             .Where(p => p.Role is DetectedProcessRole.PrimaryWithVisibleWindow or DetectedProcessRole.PrimaryTrayOrBackground)
             .Select(p => p.ProcessId)
@@ -588,6 +599,7 @@ public sealed class WindowsProcessTracker : IProcessTracker
         if (strategyName == "SessionEndAppExit")
         {
             var status = SendSessionEndToPids(primaryPids);
+            _logger?.LogInformation("Claude session-end PID={Pids} result={Result}", string.Join(",", primaryPids), status);
             if (status == SessionEndSignalStatus.Vetoed)
             {
                 var afterVeto = InspectApplication(application, targetPath, current);
@@ -604,47 +616,23 @@ public sealed class WindowsProcessTracker : IProcessTracker
             current = await PollUntilStoppedAsync(application, targetPath, current, timeoutMs: 4500, pollIntervalMs: 200, cancellationToken)
                 .ConfigureAwait(false);
         }
+        else if (application.TemplateKey == BuiltInAppTemplates.CodexDesktopKey &&
+                 confirmed.FirstOrDefault(p => p.Role == DetectedProcessRole.PrimaryWithVisibleWindow &&
+                     string.Equals(p.PackageFamilyName, "OpenAI.Codex_2p2nqsd0c76g0", StringComparison.OrdinalIgnoreCase)) is { } codex)
+        {
+            var windows = _platform.EnumerateTopLevelWindows(new HashSet<int> { codex.ProcessId });
+            var invoked = await Task.Run(() => windows.Any(w => w.IsVisible && w.ProcessId == codex.ProcessId &&
+                CodexQuitMenu.TryInvoke(codex, w.Handle, cancellationToken)), cancellationToken).ConfigureAwait(false);
+            strategyName = invoked ? "CodexFileMenuQuit" : "CodexQuitMenuUnavailable";
+            _logger?.LogInformation("Codex quit menu PID={Pid} invoked={Invoked}", codex.ProcessId, invoked);
+            current = await PollUntilStoppedAsync(application, targetPath, current, invoked ? 8000 : 0, 200, cancellationToken)
+                .ConfigureAwait(false);
+        }
         else
         {
             TryClosePrimaryWindowsBatch(primaryPids);
             current = await PollUntilStoppedAsync(application, targetPath, current, timeoutMs: 1600, pollIntervalMs: 150, cancellationToken)
                 .ConfigureAwait(false);
-
-            var remainingConfirmed = current.ConfirmedProcesses;
-            if (remainingConfirmed.Count > 0)
-            {
-                var stillHasVisible = remainingConfirmed.Any(p => p.Role == DetectedProcessRole.PrimaryWithVisibleWindow);
-                var remainingPrimaryPids = remainingConfirmed
-                    .Where(p => p.Role is DetectedProcessRole.PrimaryWithVisibleWindow or DetectedProcessRole.PrimaryTrayOrBackground)
-                    .Select(p => p.ProcessId)
-                    .ToHashSet();
-
-                // Если главное окно закрылось, но Electron/Chromium-приложение осталось в трее, отправляем штатный WM_ENDSESSION.
-                // Для обычного консольного/Win32-приложения без Electron/Chromium не отправляем WM_ENDSESSION, чтобы не убить консольный процесс при скрытом окне.
-                var supportsTraySessionEnd = application.UseChromiumProxyFlag
-                    || current.HelperOrAuxiliaryProcesses.Count > 0;
-
-                if (!stillHasVisible && remainingPrimaryPids.Count > 0 && supportsTraySessionEnd)
-                {
-                    strategyName = "CloseThenSessionEnd";
-                    var status = SendSessionEndToPids(remainingPrimaryPids);
-                    if (status == SessionEndSignalStatus.Vetoed)
-                    {
-                        var afterVeto = InspectApplication(application, targetPath, current);
-                        return new ProcessStopResult
-                        {
-                            Outcome = ProcessStopOutcome.GracefulVetoed,
-                            FinalInspection = afterVeto,
-                            RemainingConfirmedProcesses = afterVeto.ConfirmedProcesses,
-                            RemainingAmbiguousProcesses = afterVeto.AmbiguousProcesses,
-                            GracefulStrategyUsed = strategyName
-                        };
-                    }
-
-                    current = await PollUntilStoppedAsync(application, targetPath, current, timeoutMs: 2800, pollIntervalMs: 200, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
         }
 
         var finalConfirmed = current.ConfirmedProcesses;
@@ -716,6 +704,9 @@ public sealed class WindowsProcessTracker : IProcessTracker
 
                     attemptedAnyKill = true;
                     var attempt = _platform.TryTerminateProcess(candidate.ProcessId, candidate.StartedUtc);
+                    _logger?.LogInformation("Force stop {Image} PID={Pid} PPID={Parent} created={Created:O} package={Package} pass={Pass} result={Result} Win32={Error}",
+                        candidate.ExecutablePath, candidate.ProcessId, candidate.ParentProcessId, candidate.StartedUtc,
+                        candidate.PackageFullName, pass + 1, attempt.Status, attempt.NativeErrorCode);
                     switch (attempt.Status)
                     {
                         case TerminateAttemptStatus.Terminated:
@@ -774,7 +765,7 @@ public sealed class WindowsProcessTracker : IProcessTracker
             // Удаляем ошибки по процессам, которые всё-таки завершились к моменту повторного снимка
             foreach (var existingKey in permanentErrorsByKey.Keys.ToList())
             {
-                if (!remainingKeys.Contains(existingKey))
+                if (!remainingKeys.Contains(existingKey) && !_platform.IsProcessStillActive(existingKey.Pid, existingKey.StartedUtc))
                 {
                     permanentErrorsByKey.Remove(existingKey);
                 }
@@ -837,23 +828,6 @@ public sealed class WindowsProcessTracker : IProcessTracker
         }
 
         return InspectApplication(application, targetPath, current);
-    }
-
-    private static string ResolveGracefulStrategy(ApplicationProfile application, RunningAppInspection inspection)
-    {
-        if (string.Equals(application.TemplateKey, BuiltInAppTemplates.ClaudeDesktopKey, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(application.TemplateKey, BuiltInAppTemplates.CodexDesktopKey, StringComparison.OrdinalIgnoreCase))
-        {
-            return "SessionEndAppExit";
-        }
-
-        var hasVisible = inspection.ConfirmedProcesses.Any(p => p.Role == DetectedProcessRole.PrimaryWithVisibleWindow);
-        if (!hasVisible && (application.UseChromiumProxyFlag || inspection.HelperOrAuxiliaryProcesses.Count > 0))
-        {
-            return "SessionEndAppExit";
-        }
-
-        return "CloseMainWindow";
     }
 
     private bool TryClosePrimaryWindows(int pid)
@@ -1410,13 +1384,13 @@ public sealed class WindowsProcessTracker : IProcessTracker
             if (handle.IsInvalid)
             {
                 var err = Marshal.GetLastWin32Error();
-                return err == ErrorAccessDenied;
+                return err != ErrorInvalidParameter;
             }
 
             if (expectedStartedUtc is not null)
             {
                 var actualStart = TryGetProcessCreationTimeUtc(handle);
-                if (actualStart is null || actualStart.Value != expectedStartedUtc.Value)
+                if (actualStart.HasValue && actualStart.Value != expectedStartedUtc.Value)
                 {
                     return false;
                 }
@@ -1458,15 +1432,16 @@ public sealed class WindowsProcessTracker : IProcessTracker
                     2000,
                     out var result);
 
-                if (sent != IntPtr.Zero)
+                if (sent == IntPtr.Zero || result == IntPtr.Zero)
                 {
-                    if (result == IntPtr.Zero)
+                    foreach (var accepted in acceptedWindows)
                     {
-                        return SessionEndSignalStatus.Vetoed;
+                        SendMessageTimeoutW(accepted, WmEndSession, IntPtr.Zero, (IntPtr)EndSessionCloseApp,
+                            SmtoAbortIfHung, 2000, out _);
                     }
-
-                    acceptedWindows.Add(w.Handle);
+                    return sent == IntPtr.Zero ? SessionEndSignalStatus.DeliveryFailed : SessionEndSignalStatus.Vetoed;
                 }
+                acceptedWindows.Add(w.Handle);
             }
 
             if (acceptedWindows.Count == 0)
@@ -1474,19 +1449,20 @@ public sealed class WindowsProcessTracker : IProcessTracker
                 return SessionEndSignalStatus.NoWindows;
             }
 
+            var delivered = true;
             foreach (var hWnd in acceptedWindows)
             {
-                SendMessageTimeoutW(
+                delivered &= SendMessageTimeoutW(
                     hWnd,
                     WmEndSession,
                     (IntPtr)1,
                     (IntPtr)EndSessionCloseApp,
                     SmtoAbortIfHung,
                     3000,
-                    out _);
+                    out _) != IntPtr.Zero;
             }
 
-            return SessionEndSignalStatus.Sent;
+            return delivered ? SessionEndSignalStatus.Sent : SessionEndSignalStatus.DeliveryFailed;
         }
 
         public TerminateAttemptResult TryTerminateProcess(int pid, DateTime? expectedStartedUtc)
@@ -1499,12 +1475,12 @@ public sealed class WindowsProcessTracker : IProcessTracker
 
                 if (err == ErrorInvalidParameter)
                 {
-                    return new TerminateAttemptResult(TerminateAttemptStatus.AlreadyExited);
+                    return new TerminateAttemptResult(TerminateAttemptStatus.AlreadyExited, NativeErrorCode: err);
                 }
 
                 if (!IsProcessStillActive(pid, expectedStartedUtc))
                 {
-                    return new TerminateAttemptResult(TerminateAttemptStatus.AlreadyExited);
+                    return new TerminateAttemptResult(TerminateAttemptStatus.AlreadyExited, NativeErrorCode: err);
                 }
 
                 return new TerminateAttemptResult(
@@ -1514,7 +1490,14 @@ public sealed class WindowsProcessTracker : IProcessTracker
             }
 
             var actualStart = TryGetProcessCreationTimeUtc(handle);
-            if (expectedStartedUtc is null || actualStart is null || actualStart.Value != expectedStartedUtc.Value)
+            if (!actualStart.HasValue)
+            {
+                var error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                return new TerminateAttemptResult(TerminateAttemptStatus.Failed, NativeErrorCode: error,
+                    ErrorMessage: $"GetProcessTimes: {new Win32Exception(error).Message}");
+            }
+            if (expectedStartedUtc is null || actualStart.Value != expectedStartedUtc.Value)
             {
                 handle.Dispose();
                 return new TerminateAttemptResult(TerminateAttemptStatus.CreationTimeMismatch);
@@ -1530,9 +1513,9 @@ public sealed class WindowsProcessTracker : IProcessTracker
             var stillActive = waitRc != 0 && (!GetExitCodeProcess(handle, out var exitCode) || exitCode == StillActive);
             handle.Dispose();
 
-            if (!stillActive || termErr == ErrorInvalidParameter)
+            if (!stillActive)
             {
-                return new TerminateAttemptResult(TerminateAttemptStatus.AlreadyExited);
+                return new TerminateAttemptResult(TerminateAttemptStatus.AlreadyExited, NativeErrorCode: termErr);
             }
 
             return new TerminateAttemptResult(

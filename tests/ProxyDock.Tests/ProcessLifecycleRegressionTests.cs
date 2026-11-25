@@ -18,6 +18,20 @@ namespace ProxyDock.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class ProcessLifecycleRegressionTests
 {
+    [Fact]
+    public void MsixInspection_PreservesAliasAndExcludesWindowsRuntimeBroker()
+    {
+        const string alias = @"C:\Users\test\AppData\Local\Microsoft\WindowsApps\claude-desktop.exe";
+        const string family = "Claude_pzs8sxrjxfjjc";
+        const string exe = @"C:\Program Files\WindowsApps\Claude_5.1231.2.0_x64__pzs8sxrjxfjjc\app\Claude.exe";
+        var broker = new RawProcessCandidate(13040, 1392, "RuntimeBroker",
+            Path.Combine(Environment.SystemDirectory, "RuntimeBroker.exe"), null, null, family, false, null, false);
+        var inspection = ProcessInstanceClassifier.Classify([broker], new ProcessMatchContext(alias, exe, family));
+        Assert.Empty(inspection.Processes);
+        Assert.Equal(alias, inspection.InspectionTargetPath);
+        Assert.Equal(exe, inspection.ExpectedExecutablePath);
+    }
+
     private static void WaitUi(Task task, int timeoutSeconds = 25)
     {
         var timeout = Stopwatch.StartNew();
@@ -395,7 +409,7 @@ public sealed class ProcessLifecycleRegressionTests
             Name = "Veto Tray App",
             LaunchKind = LaunchKind.Desktop,
             ExecutableOrCommand = exe,
-            TemplateKey = BuiltInAppTemplates.CodexDesktopKey,
+            TemplateKey = BuiltInAppTemplates.ClaudeDesktopKey,
             UseChromiumProxyFlag = true
         });
 
@@ -761,7 +775,7 @@ public sealed class ProcessLifecycleRegressionTests
             Name = "Restart Tray App",
             LaunchKind = LaunchKind.Desktop,
             ExecutableOrCommand = exe,
-            TemplateKey = BuiltInAppTemplates.CodexDesktopKey,
+            TemplateKey = BuiltInAppTemplates.ClaudeDesktopKey,
             Arguments = $"--output \"{launchOut}\" --sleep-ms 5000",
             ProxyMode = ProxyAssignmentMode.Specific,
             ProxyProfileId = newProxy.Id,

@@ -88,6 +88,7 @@ public sealed class RunningAppInspection
 
     public DateTime InspectedAtUtc { get; init; } = DateTime.UtcNow;
     public string? ExpectedPackageFamilyName { get; init; }
+    public string? InspectionTargetPath { get; init; }
     public string? ExpectedExecutablePath { get; init; }
     public bool HasActiveTrackedRootForTarget { get; init; }
     public IReadOnlyList<DetectedProcessInfo> Processes { get; init; } = [];

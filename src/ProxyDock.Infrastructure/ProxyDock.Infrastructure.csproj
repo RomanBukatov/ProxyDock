@@ -10,6 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <ProjectReference Include="..\ProxyDock.Core\ProxyDock.Core.csproj" />
   </ItemGroup>
 

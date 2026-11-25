@@ -493,7 +493,7 @@ public sealed partial class ApplicationsViewModel : ViewModelBase
     {
         if (result.Errors.Count > 0)
         {
-            var errText = string.Join("; ", result.Errors.Select(e => $"{e.ProcessName} (PID {e.ProcessId}): {e.Message}"));
+            var errText = string.Join("; ", result.Errors.Select(e => $"{e.ProcessName} (PID {e.ProcessId}, Win32 {e.NativeErrorCode}): {e.Message}"));
             var remainingIds = FormatProcessSummaryList(result.RemainingConfirmedProcesses.Concat(result.RemainingAmbiguousProcesses));
             _notifications.Show(
                 card.Name,

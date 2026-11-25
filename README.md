@@ -3,6 +3,8 @@
 [![CI](https://github.com/RomanBukatov/ProxyDock/actions/workflows/ci.yml/badge.svg)](https://github.com/RomanBukatov/ProxyDock/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/RomanBukatov/ProxyDock?label=release)](https://github.com/RomanBukatov/ProxyDock/releases/latest)
 
+[English](README.en.md) · [Примечания к выпуску 0.1.1](docs/releases/v0.1.1.md)
+
 **ProxyDock** — это desktop-приложение для Windows 11 на базе **.NET 10** и **Avalonia UI 12**, предназначенное для запуска отдельных программ через индивидуальные HTTP-прокси **без изменения системного прокси Windows**, реестра, WinHTTP, маршрутизации или глобальных переменных окружения.
 
 Основной сценарий первой версии — **удобный запуск Windows GUI-приложений** (включая предустановленные профили для **Google Antigravity Desktop**, **Claude Desktop** и **Codex Desktop**, а также произвольных `.exe`). Поддержка CLI-программ в интерактивном терминале (`Windows Terminal` / `PowerShell`) сохранена как дополнительная универсальная возможность.
@@ -39,7 +41,7 @@
 
 Скачать актуальную версию можно на странице [GitHub Releases](https://github.com/RomanBukatov/ProxyDock/releases/latest).
 
-Первый публичный выпуск — [ProxyDock v0.1.0](https://github.com/RomanBukatov/ProxyDock/releases/tag/v0.1.0). Для Windows 11 x64 доступны [установщик с самообновлением](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.0/ProxyDockApp-win-Setup.exe), [самообновляемый Portable ZIP](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.0/ProxyDockApp-win-Portable.zip), [standalone EXE](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.0/ProxyDock-v0.1.0-win-x64-standalone.exe) и [контрольные суммы SHA-256](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.0/SHA256SUMS.txt).
+Стабильная версия — [ProxyDock v0.1.1](https://github.com/RomanBukatov/ProxyDock/releases/tag/v0.1.1). Для Windows 11 x64 доступны [установщик с самообновлением](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.1/ProxyDockApp-win-Setup.exe), [самообновляемый Portable ZIP](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.1/ProxyDockApp-win-Portable.zip), [standalone EXE](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.1/ProxyDock-v0.1.1-win-x64-standalone.exe) и [контрольные суммы SHA-256](https://github.com/RomanBukatov/ProxyDock/releases/download/v0.1.1/SHA256SUMS.txt).
 
 | Вариант | Файл в релизе | Автообновление (Velopack) | Особенности |
 | :--- | :--- | :---: | :--- |
@@ -67,8 +69,8 @@
 
 ### Создание нового релиза
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 Версия сборки (`AssemblyVersion`, `FileVersion`, `InformationalVersion`), пакета Velopack и артефактов автоматически определяется из Git-тега через `Directory.Build.props` (`ProxyDockVersion`).
 
@@ -135,7 +137,7 @@ ProxyDock/
 
 Статус **«Не запущено»** показывается только когда не осталось ни одного процесса управляемого экземпляра. Если окно скрыто в трей или остались дочерние/фоновые процессы (либо принадлежность процесса не удалось подтвердить), карточка показывает **«Работает в фоне»**, а подробности (PID, PPID, время запуска, основание принадлежности) доступны в **«Диагностике»**.
 
-Команда **«Завершить»** выполняет штатный выход, а не просто закрывает окно: для Electron/MSIX-приложений, уходящих в трей (Claude Desktop, Codex Desktop), дополнительно отправляется `WM_QUERYENDSESSION`/`WM_ENDSESSION` (`ENDSESSION_CLOSEAPP`), и приложению даётся время на сохранение данных. Если приложение отказалось выходить или процессы остались, ProxyDock сообщает об этом и предлагает принудительное завершение — только с вашего согласия. Команда **«Завершить принудительно»** в меню **⋯** показывает процессы и требует подтверждения; она завершает только процессы выбранного экземпляра (по package identity, пути, родительским связям и времени создания; системные службы и независимые экземпляры не затрагиваются) в несколько проходов с повторной проверкой и показывает конкретные ошибки, если процесс завершить не удалось. Для смены маршрута выберите прокси в меню карточки и нажмите кнопку перезапуска: новый экземпляр запускается только после подтверждённого полного выхода предыдущего.
+Команда **«Завершить»** вызывает пункт выхода в меню «Файл» открытого окна Codex Desktop. Для Claude Desktop используется обработчик завершения сеанса, для обычных окон — запрос закрытия. Если процессы остались, ProxyDock предлагает завершить их принудительно. Команда **«Завершить принудительно»** показывает список процессов и требует подтверждения. При отказе Windows сообщение содержит PID и код ошибки Win32. Системные службы Claude и ChatGPT продолжают работать независимо. При перезапуске ProxyDock проверяет завершение старого экземпляра перед запуском нового с выбранным прокси.
 
 #### Google Antigravity
 - Используйте профиль **Google Antigravity** (из блока обнаруженных приложений или через меню **«+ Добавить» → «Google Antigravity»**).

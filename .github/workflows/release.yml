@@ -141,8 +141,11 @@ jobs:
           RELEASE_VERSION: ${{ steps.meta.outputs.VERSION }}
           RELEASE_TAG: ${{ steps.meta.outputs.TAG }}
         run: |
-          $notesFile = Join-Path $env:RUNNER_TEMP "release-notes.md"
-          "ProxyDock $env:RELEASE_TAG" | Set-Content $notesFile -Encoding utf8
+          $notesFile = "docs/releases/$env:RELEASE_TAG.md"
+          if (!(Test-Path -LiteralPath $notesFile)) {
+            $notesFile = Join-Path $env:RUNNER_TEMP "release-notes.md"
+            "ProxyDock $env:RELEASE_TAG" | Set-Content $notesFile -Encoding utf8
+          }
 
           dotnet vpk pack `
             --packId ProxyDockApp `
@@ -203,9 +206,14 @@ jobs:
           $argsList = @(
             'release', 'create', $env:RELEASE_TAG,
             '--repo', $env:GITHUB_REPOSITORY,
-            '--title', "ProxyDock $env:RELEASE_TAG",
-            '--generate-notes'
+            '--title', "ProxyDock $env:RELEASE_TAG"
           )
+          $notesFile = "docs/releases/$env:RELEASE_TAG.md"
+          if (Test-Path -LiteralPath $notesFile) {
+            $argsList += @('--notes-file', $notesFile)
+          } else {
+            $argsList += '--generate-notes'
+          }
           if ($env:IS_PRERELEASE -eq 'true') {
             $argsList += '--prerelease'
           }

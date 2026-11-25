@@ -43,7 +43,7 @@ public interface IProcessTracker : IDisposable
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(inspection);
         RequestStop(inspection, force);
-        var after = InspectApplication(application, inspection.ExpectedExecutablePath ?? application.ExecutableOrCommand, inspection);
+        var after = InspectApplication(application, inspection.InspectionTargetPath ?? inspection.ExpectedExecutablePath ?? application.ExecutableOrCommand, inspection);
         var remainingConfirmed = after.ConfirmedProcesses;
         var remainingAmbiguous = after.AmbiguousProcesses;
         var outcome = remainingConfirmed.Count == 0 && remainingAmbiguous.Count == 0
